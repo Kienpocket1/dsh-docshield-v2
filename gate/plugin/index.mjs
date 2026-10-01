@@ -18,7 +18,7 @@ export const inject = ['connection', 'webServer']
 
 const GATE_BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'bin', 'gate.mjs')
 
-/** Plugin config → gate environment (the gate's own config reads these). */
+/** Plugin config → gate environment (the gate's own config reads these); a variable already set in DSH's environment wins. */
 const ENV_KEYS = {
   port: 'GATE_PORT',
   host: 'GATE_HOST',
@@ -39,7 +39,7 @@ export function apply(ctx, config = {}) {
     const env = { ...process.env, GATE_UPSTREAM_URL: upstream }
     for (const [key, name] of Object.entries(ENV_KEYS)) {
       const value = config[key]
-      if (value !== undefined && value !== null) env[name] = typeof value === 'boolean' ? (value ? '1' : '0') : String(value)
+      if (value !== undefined && value !== null && process.env[name] === undefined) env[name] = typeof value === 'boolean' ? (value ? '1' : '0') : String(value)
     }
     child = spawn(process.execPath, [GATE_BIN, 'serve', '--plugin'], { env, stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true })
     child.once('exit', code => {

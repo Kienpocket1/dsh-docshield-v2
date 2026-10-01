@@ -67,18 +67,19 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
     }
   }
 
-  /** The user's folder exists and is a DSH workspace (once per gate run). */
-  function ensureWorkspace(username) {
-    let pending = ensured.get(username)
+  /** The account's folder (users/<name>, or admin for admins) exists and is a DSH workspace (once per gate run). */
+  function ensureWorkspace(user) {
+    const key = user.role === 'admin' ? '#admin' : user.username
+    let pending = ensured.get(key)
     if (pending === undefined) {
-      const root = rootOf(username)
+      const root = user.role === 'admin' ? path.resolve(storageRoot, 'admin') : rootOf(user.username)
       pending = (async () => {
         mkdirSync(path.join(root, 'docs'), { recursive: true })
         const value = await call('workspace/create', { request: { path: root } })
         if (value?.workspace?.workspaceId) workspaces.set(value.workspace.workspaceId, value.workspace.path ?? root)
       })()
-      pending.catch(err => { ensured.delete(username); log(`workspace ${username}: ${err.message}`) })
-      ensured.set(username, pending)
+      pending.catch(err => { ensured.delete(key); log(`workspace ${key}: ${err.message}`) })
+      ensured.set(key, pending)
     }
     return pending
   }
@@ -87,8 +88,8 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
 
   async function handleHttp(req, res, user) {
     const instance = await upstream.get()
+    await ensureWorkspace(user).catch(() => {})
     if (user.role === 'admin') return proxyHttp(req, res, instance)
-    await ensureWorkspace(user.username).catch(() => {})
     const url = new URL(req.url ?? '/', 'http://gate.local')
     const p = url.pathname
     const access = accessFor(user.username)
@@ -97,17 +98,22 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
     if (SESSION_QUERY_ROUTES.has(p)) {
       const id = url.searchParams.get('sessionId')
       await sessions.ensure([id])
-      return access.owns(id) ? proxyHttp(req, res, instance) : deny(res, 403)
+      if (access.owns(id)) return proxyHttp(req, res, instance)
+      log(`deny ${user.username} ${p} (sessionId)`)
+      return deny(res, 403)
     }
     if (p === '/api/file' && (req.method === 'GET' || req.method === 'HEAD')) {
-      return access.inRoot(url.searchParams.get('path')) ? proxyHttp(req, res, instance) : deny(res, 403)
+      if (access.inRoot(url.searchParams.get('path'))) return proxyHttp(req, res, instance)
+      log(`deny ${user.username} /api/file (ngoài thư mục)`)
+      return deny(res, 403)
     }
     const rpc = /^\/api\/([A-Za-z0-9_$.-]+)\/([A-Za-z0-9_$.-]+)$/.exec(p)
-    if (rpc && req.method === 'POST') return handleRpc(req, res, `${rpc[1]}/${rpc[2]}`, access, instance)
+    if (rpc && req.method === 'POST') return handleRpc(req, res, `${rpc[1]}/${rpc[2]}`, access, instance, user.username)
+    log(`deny ${user.username} ${req.method} ${p}`)
     return deny(res, 404)
   }
 
-  async function handleRpc(req, res, method, access, instance) {
+  async function handleRpc(req, res, method, access, instance, username) {
     let message
     try {
       message = JSON.parse((await readBody(req, MAX_RPC_BODY)).toString('utf8'))
@@ -117,7 +123,7 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
     const rpcId = message?.rpcId
     const args = message?.payload?.args
     if (message?.type !== 'client-request' || message.method !== method || args === null || typeof args !== 'object') return deny(res, 400)
-    const refuse = reason => rpcReply(res, rpcId, { ok: false, error: { code: 'gate/forbidden', message: `Gate: ${reason}.`, details: {} } })
+    const refuse = reason => (log(`deny ${username} ${method}: ${reason}`), rpcReply(res, rpcId, { ok: false, error: { code: 'gate/forbidden', message: `Gate: ${reason}.`, details: {} } }))
 
     if (method === '$events/result') {
       const key = `${args.clientId}|${args.eventId}`
@@ -174,10 +180,10 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
   async function handleUpgrade(req, socket, head, user) {
     const instance = await upstream.get()
     track(user.username, socket)
+    await ensureWorkspace(user).catch(() => {})
     if (user.role === 'admin') return proxyUpgrade(req, socket, head, instance)
     const url = new URL(req.url ?? '/', 'http://gate.local')
     if (url.pathname !== '/api/remote.mux') return socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
-    await ensureWorkspace(user.username).catch(() => {})
     relayMux(req, socket, head, instance, accessFor(user.username), user.username)
   }
 
@@ -196,7 +202,7 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
 
     const toClient = obj => client.write(encodeFrame(OP.TEXT, JSON.stringify(obj)))
     const toUpstream = obj => upstreamSocket.write(encodeFrame(OP.TEXT, JSON.stringify(obj), { mask: true }))
-    const streamError = (streamId, message) => toClient({ type: 'error', streamId, error: { code: 'gate/forbidden', message: `Gate: ${message}.`, details: {} } })
+    const streamError = (streamId, message) => (log(`deny ${username} mux ${streams.get(streamId) ?? streamId}: ${message}`), toClient({ type: 'error', streamId, error: { code: 'gate/forbidden', message: `Gate: ${message}.`, details: {} } }))
 
     // Handshake: same request, without compression (the relay reads every frame).
     upstreamSocket.once('connect', () => {
@@ -244,7 +250,7 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
       const args = frame.payload?.args ?? {}
       await sessions.ensure(collect(args).ids)
       const decision = checkOpen(frame.endpoint, args, access)
-      if (!decision.allow) return streamError(frame.streamId, decision.reason)
+      if (!decision.allow) return streamError(frame.streamId, `${frame.endpoint}: ${decision.reason}`)
       streams.set(frame.streamId, frame.endpoint)
       toUpstream(frame)
     }

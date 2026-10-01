@@ -91,6 +91,8 @@ export function collect(args) {
 export function checkCall(method, args, access) {
   if (GLOBAL.has(method)) return { allow: true }
   if (method === 'terminal/list') return { fake: [] }
+  // The UI pushes its inspector manifest at boot (a developer tool); accept and drop it.
+  if (method === 'dynamicCordisRunner/syncInspectManifest') return { fake: undefined }
   if (method === 'session/list' || method === 'session/search') return { allow: true } // responses are filtered
   if (method === 'session/create') return checkCreate(args, access)
   if (method === 'directoryPicker/list') {
