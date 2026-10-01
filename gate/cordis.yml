@@ -1,0 +1,7 @@
+# dsh-gate: starts the sign-in gate in front of this DSH (see plugin/index.mjs).
+- insert:
+    - id: dsh-gate
+      name: 'dsh-gate'
+      config:
+        port: 3444
+        host: '127.0.0.1'

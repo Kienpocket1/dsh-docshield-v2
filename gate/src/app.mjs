@@ -1,12 +1,12 @@
 /**
  * The gate's HTTP server. Pages under /gate/ (setup, login, register,
- * password, admin); everything else is proxied to the signed-in user's own
- * DSH instance.
+ * password, admin); everything else goes to the shared DSH through the
+ * per-user filter (filter.mjs).
  */
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import http from 'node:http'
 import { dummyVerify, hashPassword, verifyPassword } from './password.mjs'
-import { downstreamHeaders, proxyHttp, proxyUpgrade, upstreamHeaders } from './proxy.mjs'
+import { downstreamHeaders, upstreamHeaders } from './proxy.mjs'
 import {
   CSRF_COOKIE, SESSION_COOKIE, SESSION_TTL_MS, cookie, formToken, issueSession, newCsrfToken, parseCookies, sameToken, verifySession,
 } from './session.mjs'
@@ -31,7 +31,8 @@ const PAGE_HEADERS = {
  * @param {object} deps
  * @param {import('./store.mjs').GateStore} deps.store
  * @param {Buffer} deps.secret
- * @param {{ get(user: object): Promise<import('./instance.mjs').Instance>, socketOpened?(user: string, socket: import('node:stream').Duplex): void, stop?(user: string): Promise<void> }} deps.instances
+ * @param {{ get(): Promise<{ port: number, origin: string, cookie: string }> }} deps.upstream the shared DSH
+ * @param {{ handleHttp(req, res, user): Promise<void>, handleUpgrade(req, socket, head, user): Promise<void>, disconnect?(username: string): void }} deps.filter
  * @param {string} [deps.setupKey] one-time key printed on the console while no account exists;
  *   it guards /gate/setup, which creates the first admin
  * @param {boolean} [deps.trustProxy] behind a local tunnel (cloudflared): take the client IP from
@@ -39,7 +40,7 @@ const PAGE_HEADERS = {
  *   arriving from this machine, so remote clients cannot spoof their IP
  * @param {(msg: string) => void} [deps.log]
  */
-export function createGate({ store, secret, instances, setupKey, trustProxy = false, log = () => {} }) {
+export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, log = () => {} }) {
   const setupOpen = () => setupKey !== undefined && store.countUsers() === 0
   const sessionValue = req => parseCookies(req.headers.cookie)[SESSION_COOKIE]
   const currentUser = req => verifySession(secret, sessionValue(req), name => store.getUser(name))
@@ -102,9 +103,8 @@ export function createGate({ store, secret, instances, setupKey, trustProxy = fa
       if (url.pathname.startsWith('/api/') || req.method !== 'GET') return json(res, 403, { error: 'password change required' })
       return redirect(res, '/gate/password')
     }
-    const instance = await instances.get(user)
-    if (req.method === 'GET' && url.pathname === '/') return proxyIndexWithBar(req, res, instance, user)
-    proxyHttp(req, res, instance)
+    if (req.method === 'GET' && url.pathname === '/') return proxyIndexWithBar(req, res, await upstream.get(), user)
+    return filter.handleHttp(req, res, user)
   }
 
   server.on('upgrade', (req, socket, head) => {
@@ -113,13 +113,7 @@ export function createGate({ store, secret, instances, setupKey, trustProxy = fa
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
       return
     }
-    instances.get(user).then(
-      instance => {
-        instances.socketOpened?.(user.username, socket)
-        proxyUpgrade(req, socket, head, instance)
-      },
-      err => { log(`upgrade ${user.username}: ${err.message}`); socket.destroy() },
-    )
+    filter.handleUpgrade(req, socket, head, user).catch(err => { log(`upgrade ${user.username}: ${err.message}`); socket.destroy() })
   })
 
   // ---------- anonymous pages (double-submit CSRF cookie) ----------
@@ -293,7 +287,8 @@ export function createGate({ store, secret, instances, setupKey, trustProxy = fa
     if (target === undefined) return fail(`Không có tài khoản ${username}.`)
     const isSelf = target.username === me.username
     const lastAdmin = target.role === 'admin' && target.status === 'active' && !target.disabled && store.countActiveAdmins() <= 1
-    const stopInstance = () => instances.stop?.(target.username).catch(() => {})
+    // The new credential_version already rejects their cookie; also cut open WebSockets.
+    const stopInstance = async () => filter.disconnect?.(target.username)
     const note = detail => store.audit(action === 'approve' ? 'approved' : action === 'reject' ? 'rejected' : action, { username: target.username, ip, detail: `bởi ${me.username}${detail ? `: ${detail}` : ''}` })
     try {
       switch (action) {

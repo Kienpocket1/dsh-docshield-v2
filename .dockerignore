@@ -1,9 +1,0 @@
-**/node_modules
-.git
-gate
-project3
-docshield/src
-docshield/tests
-docshield/demo
-docshield/scripts
-*.log

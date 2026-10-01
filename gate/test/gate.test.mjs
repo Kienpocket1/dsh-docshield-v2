@@ -10,6 +10,7 @@ import { hashPassword, verifyPassword } from '../src/password.mjs'
 import { downstreamHeaders, upstreamHeaders } from '../src/proxy.mjs'
 import { issueSession, verifySession } from '../src/session.mjs'
 import { GateStore } from '../src/store.mjs'
+import { passthrough } from './helpers.mjs'
 
 const dir = mkdtempSync(path.join(tmpdir(), 'dsh-gate-test-'))
 after(() => rmSync(dir, { recursive: true, force: true }))
@@ -112,12 +113,11 @@ describe('gate end to end (fake DSH upstream)', () => {
     const up = upstream.address().port
     store = new GateStore(path.join(dir, 'e2e.db'))
     store.addUser('alice', 'user', await hashPassword('alice-password'))
-    const started = []
-    const instances = { get: async user => { started.push(user.username); return { port: up, origin: `http://127.0.0.1:${up}`, cookie: 'dsh-auth-up=ok' } } }
-    gate = createGate({ store, secret: Buffer.alloc(32, 1), instances })
+    const { upstream: dsh, filter, seenUsers } = passthrough(up, { cookie: 'dsh-auth-up=ok' })
+    gate = createGate({ store, secret: Buffer.alloc(32, 1), upstream: dsh, filter })
     await new Promise(r => gate.listen(0, '127.0.0.1', r))
     gatePort = gate.address().port
-    gate.started = started
+    gate.started = seenUsers
   })
   after(() => { gate.close(); upstream.close(); store.close() })
 
@@ -160,7 +160,7 @@ describe('gate end to end (fake DSH upstream)', () => {
     assert.equal(noCsrf.status, 400)
   })
 
-  it('logs in, proxies with the instance cookie, injects the bar, hides upstream cookies', async () => {
+  it('logs in, proxies with the DSH cookie, injects the bar, hides upstream cookies', async () => {
     const res = await login('alice', 'alice-password')
     assert.equal(res.status, 303)
     const session = cookieValue(res, 'gate_session')

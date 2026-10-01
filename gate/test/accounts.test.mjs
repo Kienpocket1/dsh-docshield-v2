@@ -8,6 +8,7 @@ import { after, before, describe, it } from 'node:test'
 import { createGate, tempPassword } from '../src/app.mjs'
 import { hashPassword } from '../src/password.mjs'
 import { GateStore } from '../src/store.mjs'
+import { passthrough } from './helpers.mjs'
 
 const dir = mkdtempSync(path.join(tmpdir(), 'dsh-gate-acc-'))
 let gate, port, store, upstream
@@ -19,11 +20,8 @@ before(async () => {
   const up = upstream.address().port
   store = new GateStore(path.join(dir, 'acc.db'))
   store.addUser('boss', 'admin', await hashPassword('boss-password'))
-  const instances = {
-    get: async () => ({ port: up, origin: `http://127.0.0.1:${up}`, cookie: 'dsh-auth-x=1' }),
-    stop: async user => { stopped.push(user) },
-  }
-  gate = createGate({ store, secret: Buffer.alloc(32, 9), instances })
+  const { upstream: dsh, filter } = passthrough(up, { disconnected: stopped })
+  gate = createGate({ store, secret: Buffer.alloc(32, 9), upstream: dsh, filter })
   await new Promise(r => gate.listen(0, '127.0.0.1', r))
   port = gate.address().port
 })

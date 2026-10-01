@@ -6,6 +6,7 @@ import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { createGate } from '../src/app.mjs'
 import { GateStore } from '../src/store.mjs'
+import { passthrough, unused } from './helpers.mjs'
 
 const dir = mkdtempSync(path.join(tmpdir(), 'dsh-gate-setup-'))
 const KEY = 'ab12-cd34-ef56'
@@ -16,8 +17,7 @@ before(async () => {
   await new Promise(r => upstream.listen(0, '127.0.0.1', r))
   const up = upstream.address().port
   store = new GateStore(path.join(dir, 'setup.db'))
-  const instances = { get: async () => ({ port: up, origin: `http://127.0.0.1:${up}`, cookie: 'dsh-auth-x=1' }) }
-  gate = createGate({ store, secret: Buffer.alloc(32, 3), instances, setupKey: KEY })
+  gate = createGate({ store, secret: Buffer.alloc(32, 3), ...passthrough(up), setupKey: KEY })
   await new Promise(r => gate.listen(0, '127.0.0.1', r))
   port = gate.address().port
 })
@@ -70,7 +70,7 @@ describe('first-run setup', () => {
 
   it('without a setup key the page is closed even with no accounts', async () => {
     const empty = new GateStore(path.join(dir, 'nokey.db'))
-    const g = createGate({ store: empty, secret: Buffer.alloc(32, 4), instances: { get: async () => { throw new Error('unused') } } })
+    const g = createGate({ store: empty, secret: Buffer.alloc(32, 4), ...unused })
     await new Promise(r => g.listen(0, '127.0.0.1', r))
     const res = await new Promise(resolve => http.get({ host: '127.0.0.1', port: g.address().port, path: '/gate/setup' }, r => { r.resume(); resolve(r) }))
     assert.equal(res.headers.location, '/gate/login')

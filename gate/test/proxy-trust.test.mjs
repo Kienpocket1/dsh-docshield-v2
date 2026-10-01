@@ -8,6 +8,7 @@ import { after, describe, it } from 'node:test'
 import { createGate } from '../src/app.mjs'
 import { hashPassword } from '../src/password.mjs'
 import { GateStore } from '../src/store.mjs'
+import { unused } from './helpers.mjs'
 
 const dir = mkdtempSync(path.join(tmpdir(), 'dsh-gate-proxy-'))
 after(() => rmSync(dir, { recursive: true, force: true }))
@@ -15,7 +16,7 @@ after(() => rmSync(dir, { recursive: true, force: true }))
 async function startGate(trustProxy, name) {
   const store = new GateStore(path.join(dir, `${name}.db`))
   store.addUser('alice', 'user', await hashPassword('alice-password'))
-  const gate = createGate({ store, secret: Buffer.alloc(32, 5), instances: { get: async () => { throw new Error('unused') } }, trustProxy })
+  const gate = createGate({ store, secret: Buffer.alloc(32, 5), ...unused, trustProxy })
   await new Promise(r => gate.listen(0, '127.0.0.1', r))
   return { store, gate, port: gate.address().port }
 }
