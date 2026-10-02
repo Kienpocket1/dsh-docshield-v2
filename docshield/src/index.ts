@@ -46,8 +46,10 @@ export function apply(ctx: DshContext, rawConfig?: unknown): void {
   mountCommon(ctx, config, service, service.log, (session, refs, attachments, onAccepted) =>
     ingestUploads(session, refs, { storageRoot: config.storageRoot, attachments, indexer: service.indexer, resolve: service.resolve, scopeOptions: service.scopeOptions, onAccepted }))
 
+  // Watch first: a file written while the (possibly minutes-long) reconcile runs would otherwise be
+  // missed until the next restart. Both paths go through the indexer's serial queue and its hash check.
+  service.watcher.start()
   void service.watcher.reconcile()
-    .then(() => service.watcher.start())
     .catch(error => service.log(`startup reconcile failed: ${error instanceof Error ? error.message : String(error)}`))
 }
 
