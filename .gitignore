@@ -8,3 +8,6 @@ gate/var-test/
 
 # Build inputs prepared from the DSH source (container/prepare.mjs)
 container/build/
+
+# Report of the last attack-suite run (npm run attack)
+test/attack/last-run.md

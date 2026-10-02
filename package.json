@@ -1,8 +1,9 @@
 {
   "name": "dsh-docshield-repo",
   "private": true,
-  "description": "Chạy test của docshield/, gate/, exec-router/ và container/: npm test",
+  "description": "npm test: unit của docshield/, gate/, exec-router/, container/ (không cần Docker). npm run attack: bộ test tấn công trên hệ thống thử (cần Docker).",
   "scripts": {
-    "test": "npm --prefix docshield test && npm --prefix gate test && node --test \"exec-router/test/*.test.mjs\" \"container/test/*.test.mjs\""
+    "test": "npm --prefix docshield test && npm --prefix gate test && node --test \"exec-router/test/*.test.mjs\" \"container/test/*.test.mjs\"",
+    "attack": "node test/attack/run.mjs"
   }
 }

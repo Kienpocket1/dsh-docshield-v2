@@ -17,7 +17,8 @@
  * A zone over its disk quota is blocked until tool-manager restarts; after a
  * (re)start every zone gets 10 minutes of grace to delete files.
  * Environment: TOOL_PREFIX (default "docshield"; e2e uses "e2e"), GATE_PUBLISH (127.0.0.1:3444),
- *   TOOL_MANAGER_PORT (3460), DOCKER_BIN, TOOL_QUOTA_MB (1024).
+ *   TOOL_MANAGER_PORT (3460), DOCKER_BIN, TOOL_QUOTA_MB (1024); for tests only:
+ *   TOOL_QUOTA_GRACE_S (600) and TOOL_QUOTA_SWEEP_S (60).
  */
 import { execFile, spawn } from 'node:child_process'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
@@ -33,6 +34,8 @@ if (!/^[a-z][a-z0-9-]{1,20}$/.test(P)) throw new Error('TOOL_PREFIX không hợp
 const PORT = Number(process.env.TOOL_MANAGER_PORT ?? 3460)
 const PUBLISH = process.env.GATE_PUBLISH ?? '127.0.0.1:3444'
 const QUOTA = Number(process.env.TOOL_QUOTA_MB ?? 1024) * 1024 * 1024
+const QUOTA_GRACE_MS = Number(process.env.TOOL_QUOTA_GRACE_S ?? 600) * 1000
+const QUOTA_SWEEP_MS = Math.max(1, Number(process.env.TOOL_QUOTA_SWEEP_S ?? 60)) * 1000
 const IMAGE_TOOLS = process.env.TOOL_IMAGE ?? 'docshield-tools:dev'
 const IMAGE_MAIN = process.env.MAIN_IMAGE ?? 'docshield-dsh-main:dev'
 const NET_TOOLS = `${P}-tools`
@@ -136,7 +139,7 @@ async function ensure(zone) {
   await docker(toolRunArgs(zone, token, zone === 'admin-review' ? undefined : zoneToken(egressSecret, zone)))
   const entry = { name, token }
   running.set(zone, entry)
-  if (!grace.has(zone)) grace.set(zone, Date.now() + 10 * 60_000)
+  if (!grace.has(zone)) grace.set(zone, Date.now() + QUOTA_GRACE_MS)
   log(`bật ${name} cho ${zone}`)
   return entry
 }
@@ -220,7 +223,13 @@ async function serve() {
   log(`đã bật ${PROXY} (internet cho container công cụ)`)
   const logs = await startMain(secret)
   log(`đã bật ${MAIN}; đăng nhập tại http://${PUBLISH}`)
-  const sweep = setInterval(() => void quotaSweep().catch(e => log(`quota: ${e.message}`)), 60_000)
+  // One sweep at a time: with many containers (or a short test interval) `du` may outlast the interval.
+  let sweeping = false
+  const sweep = setInterval(() => {
+    if (sweeping) return
+    sweeping = true
+    quotaSweep().catch(e => log(`quota: ${e.message}`)).finally(() => { sweeping = false })
+  }, QUOTA_SWEEP_MS)
   let stopping = false
   const shutdown = async () => {
     if (stopping) return
