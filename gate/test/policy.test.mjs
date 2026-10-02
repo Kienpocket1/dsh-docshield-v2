@@ -83,8 +83,9 @@ describe('checkCall', () => {
     assert.equal(d.args.request.path, ALICE)
     assert.equal(checkCall('directoryPicker/list', { request: { path: BOB } }, access()).allow, false)
   })
-  it('keeps workspace file reads inside the user folder', () => {
-    assert.equal(checkCall('workspaceFiles/read', { workspaceFileScopeId: 's-alice', path: path.join(ALICE, 'docs', 'a.md') }, access()).allow, true)
+  it('refuses workspace file reads for normal users until the tool sandbox reads them', () => {
+    assert.equal(checkCall('workspaceFiles/read', { workspaceFileScopeId: 's-alice', path: path.join(ALICE, 'docs', 'a.md') }, access()).allow, false)
+    assert.equal(checkCall('workspaceFiles/list', { workspaceFileScopeId: 's-alice', path: ALICE }, access()).allow, false)
     assert.equal(checkCall('workspaceFiles/read', { workspaceFileScopeId: 's-alice', path: path.join(BOB, 'b.md') }, access()).allow, false)
     assert.equal(checkCall('workspaceFiles/readRelated', { workspaceFileScopeId: 's-alice', path: 'docs', relativePath: '../../bob/b.md' }, access()).allow, false)
   })

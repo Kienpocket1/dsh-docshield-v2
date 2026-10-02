@@ -1,7 +1,7 @@
 /** The filter against a fake DSH that speaks the real wire format (HTTP RPC + /api/remote.mux). */
 import assert from 'node:assert/strict'
 import { createHash, randomUUID } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
@@ -167,6 +167,24 @@ describe('filter (HTTP)', () => {
     assert.equal((await api('alice', 'pluginManager/install', {})).body.result.ok, false)
     const file = await new Promise(r => http.get({ host: '127.0.0.1', port: gatePort, path: `/api/file?path=${encodeURIComponent(path.join(BOB, 'b.md'))}`, headers: { 'x-user': 'alice' } }, res => { res.resume(); r(res.statusCode) }))
     assert.equal(file, 403)
+  })
+  it('serves the user’s own file itself, never through a junction', async () => {
+    const outside = path.join(storage, 'host-secrets')
+    mkdirSync(outside, { recursive: true })
+    writeFileSync(path.join(outside, 'secret.md'), 'API_KEY=sk-bi-mat')
+    mkdirSync(path.join(ALICE, 'docs'), { recursive: true })
+    writeFileSync(path.join(ALICE, 'docs', 'note.md'), 'ghi chú của alice')
+    symlinkSync(outside, path.join(ALICE, 'docs', 'link'), process.platform === 'win32' ? 'junction' : 'dir')
+    const get = p => new Promise(r => http.get({ host: '127.0.0.1', port: gatePort, path: `/api/file?path=${encodeURIComponent(p)}`, headers: { 'x-user': 'alice' } }, res => {
+      const chunks = []; res.on('data', c => chunks.push(c)); res.on('end', () => r({ status: res.statusCode, body: Buffer.concat(chunks).toString(), csp: res.headers['content-security-policy'] }))
+    }))
+    const own = await get(path.join(ALICE, 'docs', 'note.md'))
+    assert.equal(own.status, 200)
+    assert.equal(own.body, 'ghi chú của alice')
+    assert.match(own.csp, /sandbox/)
+    const viaLink = await get(path.join(ALICE, 'docs', 'link', 'secret.md'))
+    assert.equal(viaLink.status, 403)
+    assert.doesNotMatch(viaLink.body, /sk-bi-mat/)
   })
   it('relays admins unchanged', async () => {
     const res = await api('boss', 'session/list', { _request: {} })

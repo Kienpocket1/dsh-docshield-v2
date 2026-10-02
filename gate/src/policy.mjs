@@ -33,9 +33,9 @@ const SESSION_SCOPED = new Set([
   'messageFeedback/list', 'messageFeedback/put', 'messageFeedback/delete', 'sessionFeedback/record',
   'goals/get', 'goals/create', 'goals/edit', 'goals/pause', 'goals/resume', 'goals/complete', 'goals/clear',
   'sessionReferenceResolver/candidates',
-  'workspaceFiles/read', 'workspaceFiles/readBytes', 'workspaceFiles/readAll', 'workspaceFiles/readRelated',
-  'workspaceFiles/stat', 'workspaceFiles/list',
 ])
+// workspaceFiles/* is refused for normal users: DSH reads those paths on the host and would follow
+// links in the user's folder. It returns once the tool sandbox reads files inside the user's container.
 
 /** Mux streams a normal user may open. */
 const STREAMS = new Set(['$events', 'workspace/follow', 'session/control', 'session/follow'])

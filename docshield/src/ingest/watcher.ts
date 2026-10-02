@@ -3,15 +3,17 @@
  * or changed files, retire documents whose file vanished or was retired) plus
  * a recursive fs.watch with per-path debounce for later changes. Every path is
  * mapped through the binding-aware resolver, so a retired public file is never
- * indexed again while it stays on disk.
+ * indexed again while it stays on disk. Symlinks and junctions are never
+ * followed (see safe-fs.ts): a link in `docs/` is treated as absent.
  */
 import { existsSync, watch, type FSWatcher } from 'node:fs'
-import { readdir, stat } from 'node:fs/promises'
+import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 import type { DocumentStore } from '../db/documents.js'
 import type { Indexer } from './indexer.js'
 import type { DocScope } from '../scope.js'
 import { PUBLIC_SCOPE, targetForPath, type TargetResolver } from './layout.js'
+import { listSafe } from './safe-fs.js'
 
 const DEBOUNCE_MS = 1000
 
@@ -50,19 +52,20 @@ export class StorageWatcher {
     const files: string[] = []
     const usersDir = path.join(this.storageRoot, 'users')
     const owned = this.ownedScope
-    for (const user of await safeReaddir(usersDir)) {
+    const root = this.storageRoot
+    for (const user of await listSafe(root, usersDir, { dirs: true })) {
       if (owned !== undefined && owned !== `user:${user}`) continue
       const docs = path.join(usersDir, user, 'docs')
-      for (const name of await safeReaddir(docs)) files.push(path.join(docs, name))
+      for (const name of await listSafe(root, docs)) files.push(path.join(docs, name))
     }
-    const publicDir = path.join(this.storageRoot, 'public_docs')
+    const publicDir = path.join(root, 'public_docs')
     if (owned === undefined || owned === PUBLIC_SCOPE) {
-      for (const name of await safeReaddir(publicDir)) files.push(path.join(publicDir, name))
+      for (const name of await listSafe(root, publicDir)) files.push(path.join(publicDir, name))
     }
 
     for (const file of files) {
       const target = this.resolve(file)
-      if (target === null || !(await stat(file)).isFile()) continue
+      if (target === null) continue
       await this.indexer.ingest(target)
     }
     const retired = new Set(this.retiredPublic())
@@ -98,9 +101,9 @@ export class StorageWatcher {
 
   private async settle(file: string): Promise<void> {
     try {
-      const info = await stat(file).catch(() => undefined)
-      if (info === undefined) {
-        // Deleted: retire whatever live document was indexed from this exact path.
+      const info = await lstat(file).catch(() => undefined)
+      if (info === undefined || info.isSymbolicLink()) {
+        // Deleted, or replaced by a link: retire whatever live document was indexed from this exact path.
         for (const doc of this.store.liveByPath(path.resolve(file))) await this.indexer.remove(doc.scope, doc.doc_key)
         return
       }
@@ -112,10 +115,3 @@ export class StorageWatcher {
   }
 }
 
-async function safeReaddir(dir: string): Promise<string[]> {
-  try {
-    return await readdir(dir)
-  } catch {
-    return []
-  }
-}

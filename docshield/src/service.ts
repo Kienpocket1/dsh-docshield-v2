@@ -77,7 +77,7 @@ export class DocShieldService {
     this.tickets = new TicketStore(this.db)
     this.publicFiles = new PublicFiles(this.db)
     this.resolve = bindingResolver(storageRoot, this.publicFiles)
-    this.indexer = new Indexer(this.store, this.embedder, this.log)
+    this.indexer = new Indexer(this.store, this.embedder, storageRoot, this.log)
     this.watcher = new StorageWatcher(storageRoot, this.resolve, this.indexer, this.store, () => this.publicFiles.retiredFilenames(), this.log, options.identity)
     this.invoke = invokeWith(docCalls(this))
   }

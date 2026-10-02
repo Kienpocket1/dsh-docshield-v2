@@ -5,11 +5,12 @@
  *   users/<u> session → users/<u>/docs (personal)
  *   admin session     → public_docs    (public)
  */
-import { chmod, copyFile, mkdir } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import type { SessionView } from '../dsh-types.js'
 import { resolveScope, type ScopeOptions } from '../scope.js'
 import type { IngestResult, Indexer } from './indexer.js'
 import { uploadDirFor, type TargetResolver } from './layout.js'
+import { writeInside } from './safe-fs.js'
 import { assertSize, resolveInside, sanitizeFilename } from './sanitize.js'
 
 export interface FileAttachmentRef {
@@ -73,18 +74,15 @@ export async function ingestUploads(
       assertSize(ref.bytes)
       const source = deps.attachments.fileHostPath(ref)
       if (source === undefined) throw new Error('Không tìm thấy file đính kèm trong kho của DSH.')
-      await mkdir(dir, { recursive: true })
       const dest = resolveInside(dir, filename)
       // Decide before copying, so a retired public file is never overwritten or revived.
       const target = deps.resolve(dest)
       if (target === null) {
         throw new Error('Tên file này thuộc một tài liệu chung đã bị thay thế; hãy đổi tên file hoặc dùng publish_public_doc.')
       }
-      // DSH stores attachments read-only and copyFile keeps the mode, so a
-      // re-upload under the same name would hit EPERM on Windows.
-      await chmod(dest, 0o644).catch(() => undefined)
-      await copyFile(source, dest)
-      await chmod(dest, 0o644)
+      // The source is DSH's own attachment store; the destination is written
+      // without ever following a link planted in the user's folder.
+      await writeInside(deps.storageRoot, dir, filename, new Uint8Array(await readFile(source)))
       deps.onAccepted?.(filename)
       const result = await deps.indexer.ingest(target)
       results.push({ filename, result })

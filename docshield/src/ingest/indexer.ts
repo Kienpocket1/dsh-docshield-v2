@@ -4,11 +4,11 @@
  * the SQLite writer are never contended; callers await their own job.
  */
 import { createHash } from 'node:crypto'
-import { readFile, stat } from 'node:fs/promises'
 import { DocumentStore } from '../db/documents.js'
 import type { Embedder } from '../embed/embedder.js'
 import { chunkDocument } from './chunk.js'
 import { parseDocument } from './parse.js'
+import { openVerified, UnsafePathError } from './safe-fs.js'
 import { assertSize } from './sanitize.js'
 
 export interface IngestTarget {
@@ -49,6 +49,8 @@ export class Indexer {
   constructor(
     private readonly store: DocumentStore,
     private readonly embedder: Embedder,
+    /** Storage root; files are read only if their real location is inside it (see safe-fs.ts). */
+    private readonly root: string,
     private readonly log: IndexerLog = () => {},
   ) {}
 
@@ -92,14 +94,30 @@ export class Indexer {
   }
 
   private async ingestNow(target: IngestTarget, force: boolean): Promise<IngestResult> {
-    const { size } = await stat(target.path)
-    const identityBase = { scope: target.scope, docKey: target.docKey, filename: target.filename, path: target.path, bytes: size }
+    const base = { scope: target.scope, docKey: target.docKey, filename: target.filename, path: target.path }
+    let opened
     try {
-      assertSize(size)
+      opened = await openVerified(this.root, target.path)
     } catch (error) {
-      return this.fail({ ...identityBase, sha256: '' }, error)
+      // A link or junction out of the storage tree, or a file swapped while opening: never read it.
+      if (error instanceof UnsafePathError) {
+        this.log(`bỏ qua ${target.path}: ${error.message}`)
+        return this.fail({ ...base, bytes: 0, sha256: '' }, error)
+      }
+      throw error
     }
-    const bytes = new Uint8Array(await readFile(target.path))
+    const identityBase = { ...base, bytes: opened.size }
+    let bytes: Uint8Array
+    try {
+      try {
+        assertSize(opened.size)
+      } catch (error) {
+        return this.fail({ ...identityBase, sha256: '' }, error)
+      }
+      bytes = new Uint8Array(await opened.handle.readFile())
+    } finally {
+      await opened.handle.close()
+    }
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     const identity = { ...identityBase, sha256 }
     const current = this.store.current(target.scope, target.docKey)

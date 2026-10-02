@@ -9,6 +9,7 @@ import http from 'node:http'
 import net from 'node:net'
 import path from 'node:path'
 import { checkCall, checkOpen, collect, filterItem, filterResult, isInside } from './policy.mjs'
+import { serveVerified } from './safe-read.mjs'
 import { downstreamHeaders, proxyHttp, proxyUpgrade, upstreamHeaders } from './proxy.mjs'
 import { OP, createDecoder, encodeFrame } from './ws.mjs'
 
@@ -103,7 +104,8 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
       return deny(res, 403)
     }
     if (p === '/api/file' && (req.method === 'GET' || req.method === 'HEAD')) {
-      if (access.inRoot(url.searchParams.get('path'))) return proxyHttp(req, res, instance)
+      // Served here, never by DSH: DSH would follow a link planted in the user's folder.
+      if (access.inRoot(url.searchParams.get('path'))) return serveVerified(access.root, url.searchParams.get('path'), req, res)
       log(`deny ${user.username} /api/file (ngoài thư mục)`)
       return deny(res, 403)
     }
