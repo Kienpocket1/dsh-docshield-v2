@@ -2,7 +2,9 @@
 # Windows runtime into the Docker volumes on first use. Used by start-gate.cmd docker.
 #   powershell -File exec-router\ensure-docker.ps1 [-Rebuild]
 param([switch]$Rebuild)
-$ErrorActionPreference = 'Stop'
+# Not 'Stop': in Windows PowerShell 5.1 any stderr line from a native command (even with 2>$null)
+# becomes a terminating error. Every docker/npm/node call below checks $LASTEXITCODE instead.
+$ErrorActionPreference = 'Continue'
 $repo = Resolve-Path (Join-Path $PSScriptRoot '..')
 $docker = 'E:\Docker\DockerDesktop\resources\bin\docker.exe'
 if (-not (Test-Path $docker)) { $docker = 'docker' }
