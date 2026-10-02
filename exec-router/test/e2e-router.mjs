@@ -62,6 +62,16 @@ try {
     check('alice: ghi/đọc file tên tiếng Việt qua fs', (await read('s-alice', `${A}/docs/Ghi chú họp.md`)).includes('thứ Sáu'))
     check('alice: file ghi qua fs thấy được từ bash cùng container', (await bash('s-alice', A, 'cat "docs/Ghi chú họp.md"')).out.includes('thứ Sáu'))
 
+    // DSH's grep/glob tool: ripgrep at the path DSH itself computes, spawned without confine (tool-fs-search does this)
+    const { rgPath } = await import('@vscode/ripgrep')
+    as('s-alice')
+    const rgProc = ctx.subprocess.spawn({ argv: [rgPath, '--no-config', '-l', 'thứ Sáu', A], cwd: A, stdio: { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' }, graceMs: 2000 })
+    rgProc.stderr.resume()
+    let rgOut = ''
+    for await (const c of rgProc.stdout) rgOut += c
+    const rgDone = await rgProc.done
+    check('grep của DSH (rg theo rgPath của DSH) chạy trong container', rgDone.exitCode === 0 && rgOut.includes('Ghi chú họp.md'), `${rgPath} → ${rgOut.trim()}`)
+
     // TC1: another user's data through every channel
     check('TC1 fs.resolve file của bob bị từ chối', await refused(() => read('s-alice', `${B}/docs/bi_mat.md`)))
     check('TC1 đường dẫn ../ sang bob: không đọc được', await refused(async () => { as('s-alice'); await ctx.fs.readText(await ctx.fs.resolve('../e2e-bob/docs/bi_mat.md', { cwd: A })) }))

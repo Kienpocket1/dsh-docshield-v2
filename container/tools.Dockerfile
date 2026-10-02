@@ -6,7 +6,7 @@ FROM node:24-bookworm-slim
 
 ENV NODE_ENV=production npm_config_update_notifier=false npm_config_fund=false npm_config_audit=false
 RUN apt-get update \
- && apt-get install -y --no-install-recommends bash coreutils ripgrep python3 ca-certificates \
+ && apt-get install -y --no-install-recommends bash coreutils ripgrep python3 ca-certificates curl \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/tool
@@ -16,9 +16,10 @@ COPY container/build/helper.bundle.mjs container/launcher.mjs ./
 # A bundled DSH module reads its version from "../package.json" next to the bundle.
 RUN printf '{"name":"dsh-helper-bundle","version":"0.1.6-alpha.2","type":"module"}\n' > /opt/package.json
 
-# tool-fs-search in the shared DSH spawns ripgrep by DSH's own absolute path; point that path at the system rg.
-ARG DSH_RG_PATH=/opt/dsh/node_modules/@vscode/ripgrep/bin/rg
-RUN mkdir -p "$(dirname "$DSH_RG_PATH")" && ln -s /usr/bin/rg "$DSH_RG_PATH"
+# tool-fs-search in the shared DSH spawns ripgrep by DSH's own absolute path (the platform
+# package on Linux: @vscode/ripgrep-linux-x64); point those paths at the system rg.
+RUN for p in /opt/dsh/node_modules/@vscode/ripgrep/bin/rg /opt/dsh/node_modules/@vscode/ripgrep-linux-x64/bin/rg; do \
+      mkdir -p "$(dirname "$p")" && ln -s /usr/bin/rg "$p"; done
 
 # Writable places under a read-only rootfs come from tmpfs mounts given at `docker run`.
 # Fewer libuv threads per node process: --pids-limit counts threads too.
