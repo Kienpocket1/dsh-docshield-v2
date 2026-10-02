@@ -24,11 +24,15 @@ export interface CoreConfig {
    */
   readonly serviceUrl?: string
   /**
-   * Container instance only (requires `serviceUrl`): let the harness tools
-   * (shell, files, search…) run beside DocShield's; the container is their
-   * sandbox. DocShield's admin tools stay admin-only.
+   * Let the harness tools (shell, files, search…) run beside DocShield's. Only
+   * where something contains them: a per-user container (`serviceUrl`) or the
+   * exec-router tool sandbox (`toolSandbox`). DocShield's admin tools stay admin-only.
    */
   readonly allowOtherTools?: boolean
+  /** The DSH runs every agent tool in per-user tool containers (exec-router plugin). */
+  readonly toolSandbox?: boolean
+  /** Absolute database file; default `<storageRoot>/.docshield/docshield.db`. */
+  readonly dbFile?: string
 }
 
 export const DEFAULT_MIN_SIMILARITY = 0.45
@@ -59,8 +63,11 @@ export function resolveCoreConfig(raw: unknown, env: NodeJS.ProcessEnv = process
   const serviceUrl = localUrl(raw, 'serviceUrl')
   if (serviceUrl !== undefined && identity === undefined) throw new Error('docshield: config.serviceUrl requires config.identity')
   const allowOtherTools = isRecord(raw) && raw.allowOtherTools === true
-  // Outside a container nothing would contain those tools: refuse rather than open the host.
-  if (allowOtherTools && serviceUrl === undefined) throw new Error('docshield: config.allowOtherTools is only allowed with serviceUrl (per-user container)')
+  const toolSandbox = isRecord(raw) && raw.toolSandbox === true
+  // Without a container around them those tools would run on the host: refuse rather than open it.
+  if (allowOtherTools && serviceUrl === undefined && !toolSandbox) throw new Error('docshield: config.allowOtherTools is only allowed with serviceUrl or toolSandbox')
+  const dbFile = isRecord(raw) && typeof raw.dbFile === 'string' && raw.dbFile !== '' ? raw.dbFile : undefined
+  if (dbFile !== undefined && !path.isAbsolute(dbFile)) throw new Error('docshield: config.dbFile must be an absolute path')
   return {
     storageRoot: path.resolve(storageRoot),
     minSimilarity,
@@ -69,6 +76,8 @@ export function resolveCoreConfig(raw: unknown, env: NodeJS.ProcessEnv = process
     ...(embedUrl !== undefined ? { embedUrl } : {}),
     ...(serviceUrl !== undefined ? { serviceUrl } : {}),
     ...(allowOtherTools ? { allowOtherTools } : {}),
+    ...(toolSandbox ? { toolSandbox } : {}),
+    ...(dbFile !== undefined ? { dbFile: path.resolve(dbFile) } : {}),
   }
 }
 

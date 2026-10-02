@@ -74,10 +74,14 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
     let pending = ensured.get(key)
     if (pending === undefined) {
       const root = user.role === 'admin' ? path.resolve(storageRoot, 'admin') : rootOf(user.username)
+      // Tool sandbox: admins also get the read-only, offline "all users" workspace (zone admin-review).
+      const extra = user.role === 'admin' && process.env.GATE_ADMIN_REVIEW === '1' ? [path.resolve(storageRoot, 'users')] : []
       pending = (async () => {
         mkdirSync(path.join(root, 'docs'), { recursive: true })
-        const value = await call('workspace/create', { request: { path: root } })
-        if (value?.workspace?.workspaceId) workspaces.set(value.workspace.workspaceId, value.workspace.path ?? root)
+        for (const p of [root, ...extra]) {
+          const value = await call('workspace/create', { request: { path: p } })
+          if (value?.workspace?.workspaceId) workspaces.set(value.workspace.workspaceId, value.workspace.path ?? p)
+        }
       })()
       pending.catch(err => { ensured.delete(key); log(`workspace ${key}: ${err.message}`) })
       ensured.set(key, pending)

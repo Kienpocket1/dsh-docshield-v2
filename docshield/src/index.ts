@@ -40,6 +40,7 @@ export function apply(ctx: DshContext, rawConfig?: unknown): void {
     topK: config.topK,
     ...(config.identity !== undefined ? { identity: config.identity } : {}),
     ...(config.embedUrl !== undefined ? { embedUrl: config.embedUrl } : {}),
+    ...(config.dbFile !== undefined ? { dbFile: config.dbFile } : {}),
   })
   ctx.effect(() => () => service.dispose(), 'docshield: service lifetime')
   mountCommon(ctx, config, service, service.log, (session, refs, attachments, onAccepted) =>

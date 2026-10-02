@@ -31,6 +31,11 @@ describe('config.identity', () => {
     const remote = { storageRoot: ROOT, serviceUrl: 'http://host.docker.internal:3492', identity: { user: 'alice' } }
     expect(resolveCoreConfig({ ...remote, allowOtherTools: true }, {}).allowOtherTools).toBe(true)
     expect(() => resolveCoreConfig({ storageRoot: ROOT, identity: { user: 'alice' }, allowOtherTools: true }, {})).toThrow(/serviceUrl/)
+    // exec-router tool sandbox: other tools allowed, database file outside the shared storage
+    const sandboxed = resolveCoreConfig({ storageRoot: ROOT, allowOtherTools: true, toolSandbox: true, dbFile: path.resolve('/var/docshield/d.db') }, {})
+    expect(sandboxed.allowOtherTools).toBe(true)
+    expect(sandboxed.dbFile).toBe(path.resolve('/var/docshield/d.db'))
+    expect(() => resolveCoreConfig({ storageRoot: ROOT, dbFile: 'relative.db' }, {})).toThrow(/dbFile/)
     expect(resolveCoreConfig(remote, {}).serviceUrl).toBe('http://host.docker.internal:3492')
     expect(() => resolveCoreConfig({ ...remote, serviceUrl: 'http://host.docker.internal:3492.evil.com' }, {})).toThrow()
     expect(() => resolveCoreConfig({ storageRoot: ROOT, serviceUrl: 'http://127.0.0.1:3492' }, {})).toThrow(/identity/)

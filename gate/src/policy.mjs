@@ -47,8 +47,12 @@ const PATH_KEYS = new Set(['path', 'cwd', 'relativePath'])
 /** Large payload fields never searched for ids (message content, file data). */
 const SKIP_KEYS = new Set(['content', 'data', 'text', 'submittedAttachments'])
 
-/** The agent preset every normal-user session runs (DocShield tools only). */
-export const USER_PRESET = 'docshield'
+/**
+ * The agent preset every normal-user session runs. Default: DocShield tools only.
+ * With the per-user tool sandbox (exec-router, DSH in Docker) it is
+ * `docshield-harness` (shell, files… inside the user's tool container).
+ */
+export const USER_PRESET = process.env.GATE_USER_PRESET === 'docshield-harness' ? 'docshield-harness' : 'docshield'
 
 /** Case-insensitive on Windows; `child` equal to `root` counts as inside. */
 export function isInside(root, child) {

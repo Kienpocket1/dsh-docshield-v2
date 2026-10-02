@@ -1,0 +1,26 @@
+# The shared DSH in container dsh-main (passed with --patch by dsh-main-start.mjs).
+# Agent tools never run here: the host fs/subprocess/sandbox rows are replaced
+# by exec-router, which sends every call to the session's tool container.
+- id: subprocess
+  disabled: true
+- id: sandbox
+  disabled: true
+- id: fs-sandbox
+  disabled: true
+- insert:
+    - id: exec-router
+      name: 'dsh-exec-router'
+- id: docshield-core
+  config:
+    storageRoot: '/data'
+    dbFile: '/var/docshield/docshield.db'
+    allowOtherTools: true
+    toolSandbox: true
+- id: dsh-gate
+  config:
+    port: 3444
+    varDir: '/var/gate'
+    storageRoot: '/data'
+- id: agent-presets
+  config:
+    default: docshield-admin-harness
