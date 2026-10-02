@@ -21,7 +21,8 @@ ARG DSH_RG_PATH=/opt/dsh/node_modules/@vscode/ripgrep/bin/rg
 RUN mkdir -p "$(dirname "$DSH_RG_PATH")" && ln -s /usr/bin/rg "$DSH_RG_PATH"
 
 # Writable places under a read-only rootfs come from tmpfs mounts given at `docker run`.
-ENV HOME=/tmp/home HELPER_PATH=/opt/tool/helper.bundle.mjs
+# Fewer libuv threads per node process: --pids-limit counts threads too.
+ENV HOME=/tmp/home HELPER_PATH=/opt/tool/helper.bundle.mjs UV_THREADPOOL_SIZE=2
 USER 1000:1000
 EXPOSE 7000
 ENTRYPOINT ["node", "/opt/tool/launcher.mjs"]

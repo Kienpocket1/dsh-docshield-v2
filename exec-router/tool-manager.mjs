@@ -55,7 +55,8 @@ export function toolRunArgs(zone, token) {
     '--network', NET_TOOLS, '--network-alias', spec.name,
     '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,size=64m,mode=1777', '--user', '1000:1000',
     '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
-    '--memory', '256m', '--memory-swap', '256m', '--cpus', '0.5', '--pids-limit', '64',
+    // --init reaps orphaned zombies; the pids cap counts threads (each node process has ~7-10), so 256 still stops fork bombs.
+    '--init', '--memory', '256m', '--memory-swap', '256m', '--cpus', '0.5', '--pids-limit', '256',
     '--label', `${P}.role=tool`, '-e', `LAUNCHER_TOKEN=${token}`,
     ...spec.mounts, IMAGE_TOOLS]
 }

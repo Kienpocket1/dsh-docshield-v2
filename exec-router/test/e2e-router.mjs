@@ -64,7 +64,13 @@ try {
 
     // TC1: another user's data through every channel
     check('TC1 fs.resolve file của bob bị từ chối', await refused(() => read('s-alice', `${B}/docs/bi_mat.md`)))
-    check('TC1 đường dẫn ../ sang bob bị từ chối', await refused(async () => { as('s-alice'); await ctx.fs.resolve('../e2e-bob/docs/bi_mat.md', { cwd: A }) }))
+    check('TC1 đường dẫn ../ sang bob: không đọc được', await refused(async () => { as('s-alice'); await ctx.fs.readText(await ctx.fs.resolve('../e2e-bob/docs/bi_mat.md', { cwd: A })) }))
+    // DSH walks up from the cwd to "/" looking for project markers and AGENTS.md: those probes must answer "absent", not fail the turn
+    as('s-alice')
+    const probes = [await ctx.fs.lstat('/data/.git'), await ctx.fs.lstat('/.git'), await ctx.fs.stat(await ctx.fs.resolve('/data/AGENTS.md')), await ctx.fs.lstat('../AGENTS.md', { cwd: A })]
+    check('dò .git/AGENTS.md ở thư mục cha: trả về "không có", không lỗi', probes.every(x => x === undefined))
+    check('đọc AGENTS.md ngoài vùng: FS_NOT_FOUND', await ctx.fs.readText(await ctx.fs.resolve('/AGENTS.md')).then(() => false, e => e.code === 'FS_NOT_FOUND'))
+    check('ghi ngoài vùng vẫn bị từ chối', await refused(async () => { as('s-alice'); await ctx.fs.writeText(await ctx.fs.resolve('/data/x.md'), 'x', undefined, undefined, policy('s-alice', A)) }))
     check('TC1 bash cat file của bob: không tồn tại', (await bash('s-alice', A, `cat ${B}/docs/bi_mat.md 2>&1; true`)).out.includes('No such file'))
     check('TC1 spawn với cwd thư mục bob bị từ chối', await refused(async () => { as('s-alice'); ctx.subprocess.spawn({ argv: ['ls'], cwd: B, stdio: { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' }, graceMs: 1000 }) }))
     check('TC1 confine với workspaceRoot của bob bị từ chối', await refused(async () => { as('s-alice'); await ctx.sandbox.confine(['ls'], policy('s-alice', B)) }))
@@ -115,9 +121,9 @@ try {
     check('5 lệnh song song trong cùng container', many.map(m => m.out).join(',') === '1,2,3,4,5')
     check("số tiến trình trước fork bomb", true, (await bash("s-alice", A, "ls /proc | grep -c \"^[0-9]\"")).out)
     // 200 background sleeps against --pids-limit 64: bash must hit fork failures and the live count stays under the cap
-    const bomb = await bash('s-alice', A, 'ok=0; fail=0; for i in $(seq 1 200); do if sleep 3 2>/dev/null & then ok=$((ok+1)); else fail=$((fail+1)); fi; done 2>/tmp/forkerr; n=$(ls /proc | grep -c "^[0-9]"); echo "$n $(grep -c -i "fork\\|resource" /tmp/forkerr)"; kill $(jobs -p) 2>/dev/null; true')
+    const bomb = await bash('s-alice', A, 'ok=0; fail=0; for i in $(seq 1 400); do if sleep 3 2>/dev/null & then ok=$((ok+1)); else fail=$((fail+1)); fi; done 2>/tmp/forkerr; n=$(ls /proc | grep -c "^[0-9]"); echo "$n $(grep -c -i "fork\\|resource" /tmp/forkerr)"; kill $(jobs -p) 2>/dev/null; true')
     const [live, forkErrors] = bomb.out.split(' ').map(Number)
-    check('TC3 fork bomb bị chặn bởi pids-limit 64', live <= 64 && forkErrors > 0, `tiến trình sống ${live}, lỗi fork ${forkErrors}`)
+    check('TC3 fork bomb bị chặn bởi pids-limit 256', live <= 256 && forkErrors > 0, `tiến trình sống ${live}, lỗi fork ${forkErrors}`)
   }
 
   if (phase === 'reconnect') {

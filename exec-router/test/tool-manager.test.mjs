@@ -19,7 +19,7 @@ describe('docker run arguments', () => {
   it('are constants plus the validated zone, as an array (no shell string)', () => {
     const args = toolRunArgs('user:alice', TOKEN)
     assert.ok(Array.isArray(args))
-    for (const flag of ['--read-only', '--cap-drop', 'ALL', 'no-new-privileges', '--pids-limit', '64', '--memory', '256m', '--memory-swap']) assert.ok(args.includes(flag), flag)
+    for (const flag of ['--read-only', '--init', '--cap-drop', 'ALL', 'no-new-privileges', '--pids-limit', '256', '--memory', '256m', '--memory-swap']) assert.ok(args.includes(flag), flag)
     assert.ok(args.includes('1000:1000'))
     const mounts = args.filter((a, i) => args[i - 1] === '--mount')
     assert.deepEqual(mounts, ['type=volume,src=docshield-storage,dst=/data/users/alice,volume-subpath=users/alice'])

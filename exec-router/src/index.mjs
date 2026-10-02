@@ -11,7 +11,7 @@
 import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
-import { FileSystem } from '@deepseek-ai/dsh-fs'
+import { FileSystem, FsError } from '@deepseek-ai/dsh-fs'
 import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
 import { SshFileSystem } from '@deepseek-ai/dsh-fs-ssh'
@@ -105,14 +105,30 @@ export function apply(ctx, config = {}) {
   const zoneNow = policy => zoneOfCall(ctx.agents, ctx.get('sessions'), policy?.sessionId, log)
   const targetIn = (zone, target) => assertInZone(zone, String(target?.targetKey))
 
+  /**
+   * Reads and lookups outside the session's zone (or with no session) answer
+   * "absent" instead of failing: DSH itself probes such paths (project markers
+   * and AGENTS.md walked up to "/", skills under its home…), and an error there
+   * would fail the whole turn. Nothing is asked of any container, so no data
+   * leaks; writes, edits and processes outside the zone are still refused.
+   */
+  const readZone = () => { try { return zoneNow() } catch (e) { if (e instanceof ZoneError) return undefined; throw e } }
+  const insideZone = (zone, p, cwd) => { try { assertInZone(zone, p, cwd); return true } catch { return false } }
+  const absolute = (p, cwd) => (typeof p === 'string' && p.startsWith('/') ? path.posix.normalize(p) : path.posix.join(typeof cwd === 'string' ? cwd : '/', String(p)))
+  const notFound = p => new FsError(`Không tìm thấy ${p}.`, 'FS_NOT_FOUND')
+  /** Zone allowed to read `target`, or undefined when it must look absent. */
+  const readableZone = target => { const z = readZone(); return z !== undefined && insideZone(z, String(target?.targetKey)) ? z : undefined }
+
   class RoutedFileSystem extends FileSystem {
     get sandboxMode() { return policyService.defaultMode }
     async resolve(p, opts) {
-      const zone = zoneNow()
-      assertInZone(zone, p, opts?.cwd ?? rootsOf(zone)[0])
+      const zone = readZone()
+      const abs = absolute(p, opts?.cwd ?? (zone ? rootsOf(zone)[0] : '/'))
+      // Outside: a target that names the path but that every read reports as absent.
+      if (zone === undefined || !insideZone(zone, abs)) return { targetKey: abs, displayPath: String(p) }
       const target = await bundle(zone).fs.resolve(p, opts)
-      targetIn(zone, target) // the helper resolved links: the result must stay inside too
-      return target
+      // The helper resolved links: a target that lands outside is absent too.
+      return insideZone(zone, String(target.targetKey)) ? target : { targetKey: String(target.targetKey), displayPath: String(p) }
     }
     processPath(target) { return String(target.targetKey) }
     fileUrl(target) { return pathToFileURL(this.processPath(target)).href }
@@ -120,13 +136,17 @@ export function apply(ctx, config = {}) {
       const rel = path.posix.relative(this.processPath(parent), this.processPath(child))
       return rel === '' || (!rel.startsWith('../') && rel !== '..' && !path.posix.isAbsolute(rel))
     }
-    async stat(target, signal) { const z = zoneNow(); targetIn(z, target); return bundle(z).fs.stat(target, signal) }
-    async lstat(p, opts, signal) { const z = zoneNow(); assertInZone(z, p, opts?.cwd ?? rootsOf(z)[0]); return bundle(z).fs.lstat(p, opts, signal) }
-    async readText(target, signal) { const z = zoneNow(); targetIn(z, target); return bundle(z).fs.readText(target, signal) }
-    async streamText(target, signal) { const z = zoneNow(); targetIn(z, target); return bundle(z).fs.streamText(target, signal) }
-    async readBytes(target, signal, maxBytes) { const z = zoneNow(); targetIn(z, target); return bundle(z).fs.readBytes(target, signal, maxBytes) }
-    async readByteRange(target, range, signal) { const z = zoneNow(); targetIn(z, target); return bundle(z).fs.readByteRange(target, range, signal) }
-    async listDir(target, signal) { const z = zoneNow(); targetIn(z, target); return bundle(z).fs.listDir(target, signal) }
+    async stat(target, signal) { const z = readableZone(target); return z ? bundle(z).fs.stat(target, signal) : undefined }
+    async lstat(p, opts, signal) {
+      const z = readZone()
+      if (z === undefined || !insideZone(z, absolute(p, opts?.cwd ?? rootsOf(z)[0]))) return undefined
+      return bundle(z).fs.lstat(p, opts, signal)
+    }
+    async readText(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readText(target, signal) }
+    async streamText(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.streamText(target, signal) }
+    async readBytes(target, signal, maxBytes) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readBytes(target, signal, maxBytes) }
+    async readByteRange(target, range, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readByteRange(target, range, signal) }
+    async listDir(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.listDir(target, signal) }
     async writeText(target, content, expected, signal, policy) {
       const z = zoneNow(policy); targetIn(z, target)
       return bundle(z).fs.writeText(target, content, expected, signal, policy)

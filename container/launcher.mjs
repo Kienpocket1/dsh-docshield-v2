@@ -76,6 +76,9 @@ function startHelper(socket, rest) {
   child.stdin.on('error', end)
   child.stdout.on('error', end)
   child.stderr.on('data', d => process.stderr.write(`helper: ${d}`))
+  // The rpc channel has no half-close meaning: DSH closing its side ends the helper
+  // (otherwise the helper sits on an EOF'd stdin and piles up against --pids-limit).
+  socket.on('end', end)
   socket.on('close', end)
   if (rest.length > 0) child.stdin.write(rest)
   socket.pipe(child.stdin)
