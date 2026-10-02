@@ -72,7 +72,10 @@ try {
     check('TC3', 'container công cụ: CPU 0,5 / RAM 256 MB không swap / pids 256', hc.NanoCpus === 5e8 && hc.Memory === 256 * 1048576 && hc.MemorySwap === 256 * 1048576 && hc.PidsLimit === 256, JSON.stringify(limits))
     check('TC3', 'container công cụ: rootfs chỉ đọc, bỏ mọi capability, no-new-privileges, uid 1000, không privileged',
       hc.ReadonlyRootfs === true && hc.CapDrop?.includes('ALL') && hc.SecurityOpt?.some(o => o.startsWith('no-new-privileges')) && user === '1000:1000' && hc.Privileged === false, JSON.stringify(limits))
-    check('TC7', `container công cụ chỉ ở mạng nội bộ ${P}-tools`, hc.NetworkMode === `${P}-tools`, hc.NetworkMode)
+    // Every network the container is attached to, not just the first one (HostConfig.NetworkMode).
+    const nets = Object.keys(JSON.parse(docker(['inspect', '-f', '{{json .NetworkSettings.Networks}}', ct]).out || '{}'))
+    const internal = docker(['network', 'inspect', '-f', '{{.Internal}}', `${P}-tools`]).out
+    check('TC7', `container công cụ chỉ gắn đúng một mạng: ${P}-tools (internal)`, nets.length === 1 && nets[0] === `${P}-tools` && internal === 'true', `${nets.join(',')} internal=${internal}`)
     // TC7, strongest attacker: full code execution in alice's container (docker exec, outside the agent sandbox),
     // holding alice's REAL launcher token, still gets nothing from bob's launcher.
     const bobCt = (await manager('/ensure', { zone: `user:${BOB}` })).body.host
