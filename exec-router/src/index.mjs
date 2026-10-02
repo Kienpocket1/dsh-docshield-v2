@@ -18,6 +18,7 @@ import { SshFileSystem } from '@deepseek-ai/dsh-fs-ssh'
 import { SshSubprocessRuntime } from '@deepseek-ai/dsh-subprocess-ssh'
 import { SshSandboxProvider } from '@deepseek-ai/dsh-sandbox-ssh'
 import { ToolConnection } from './tool-connection.mjs'
+import { retryTransient } from './retry.mjs'
 import { ZoneError, assertInZone, rootsOf, zoneOfCall } from './zones.mjs'
 
 export const name = 'exec-router'
@@ -25,6 +26,7 @@ export const inject = ['agents', 'sandboxPolicy']
 
 const IDLE_MS = 15 * 60_000
 const SWEEP_MS = 60_000
+const CONNECT_RETRY_MS = 10_000
 
 /**
  * @param {any} ctx
@@ -55,10 +57,12 @@ export function apply(ctx, config = {}) {
       if (conn && conn.failure === undefined && !conn.closed) return conn.ready.then(() => conn)
       pending ??= (async () => {
         const { host, token } = await manager('ensure', zone)
-        const c = new ToolConnection({ host, token, workspace: rootsOf(zone)[0] })
-        await c.ready
-        conn = c
-        return c
+        // A container just (re)created by the manager answers only once its launcher listens.
+        conn = await retryTransient(async () => {
+          const c = new ToolConnection({ host, token, workspace: rootsOf(zone)[0] })
+          try { await c.ready; return c } catch (error) { await c.dispose().catch(() => {}); throw error }
+        }, { timeoutMs: CONNECT_RETRY_MS, onWait: code => log(`vùng ${zone}: chờ container khởi động (${code})`) })
+        return conn
       })().finally(() => { pending = undefined })
       return pending
     }

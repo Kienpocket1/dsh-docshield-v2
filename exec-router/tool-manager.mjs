@@ -82,6 +82,22 @@ const running = new Map()
 const blocked = new Set()
 const grace = new Map()
 
+/**
+ * Run jobs of the same key one after another. Two overlapping ensure/release calls for
+ * one zone (a UI file probe and a prompt) would otherwise remove each other's container.
+ */
+export function keyedQueue() {
+  const tails = new Map()
+  return (key, job) => {
+    const run = (tails.get(key) ?? Promise.resolve()).then(job, job)
+    const tail = run.then(() => {}, () => {})
+    tails.set(key, tail)
+    void tail.then(() => { if (tails.get(key) === tail) tails.delete(key) })
+    return run
+  }
+}
+const inZone = keyedQueue()
+
 async function ensure(zone) {
   if (blocked.has(zone)) throw Object.assign(new Error('Thư mục đã vượt hạn mức dung lượng; hãy liên hệ admin.'), { status: 403 })
   const current = running.get(zone)
@@ -116,7 +132,7 @@ async function quotaSweep() {
     if (!Number.isFinite(bytes) || bytes <= QUOTA) continue
     if ((grace.get(zone) ?? 0) > Date.now()) continue
     blocked.add(zone)
-    await release(zone)
+    await inZone(zone, () => release(zone))
     log(`${zone} vượt hạn mức (${Math.round(bytes / 1048576)} MB > ${QUOTA / 1048576} MB): đã chặn`)
   }
 }
@@ -153,8 +169,8 @@ async function serve() {
       try { zone = JSON.parse(raw).zone } catch { return reply(400, { error: 'bad request' }) }
       if (typeof zone !== 'string' || !ZONE.test(zone)) return reply(400, { error: 'zone không hợp lệ' })
       try {
-        if (req.url === '/ensure') { const e = await ensure(zone); return reply(200, { host: e.name, token: e.token }) }
-        if (req.url === '/release') { await release(zone); return reply(200, {}) }
+        if (req.url === '/ensure') { const e = await inZone(zone, () => ensure(zone)); return reply(200, { host: e.name, token: e.token }) }
+        if (req.url === '/release') { await inZone(zone, () => release(zone)); return reply(200, {}) }
         reply(404, { error: 'not found' })
       } catch (err) {
         reply(err.status ?? 500, { error: err.message })

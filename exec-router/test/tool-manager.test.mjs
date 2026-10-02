@@ -39,3 +39,19 @@ describe('docker run arguments', () => {
     assert.deepEqual(args.filter((a, i) => args[i - 1] === '--network'), ['docshield-tools'])
   })
 })
+
+describe('keyedQueue', () => {
+  it('runs jobs of one zone in order, other zones in parallel, and survives a failing job', async () => {
+    const { keyedQueue } = await import('../tool-manager.mjs')
+    const q = keyedQueue()
+    const log = []
+    const job = (name, ms, fail = false) => () => new Promise((resolve, reject) => setTimeout(() => { log.push(name); fail ? reject(new Error(name)) : resolve(name) }, ms))
+    const a1 = q('user:alice', job('a1', 60, true))
+    const a2 = q('user:alice', job('a2', 10))
+    const b1 = q('user:bob', job('b1', 20))
+    await assert.rejects(a1, /a1/)
+    assert.equal(await a2, 'a2')
+    assert.equal(await b1, 'b1')
+    assert.deepEqual(log, ['b1', 'a1', 'a2'])
+  })
+})

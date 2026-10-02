@@ -136,6 +136,33 @@ try {
     check('TC3 fork bomb bị chặn bởi pids-limit 256', live <= 256 && forkErrors > 0, `tiến trình sống ${live}, lỗi fork ${forkErrors}`)
   }
 
+  if (phase === 'kill') {
+    // Same process: a live connection, then the container is removed (as `docker rm -f` would), then
+    // the very next calls must reconnect to the freshly started container without failing (manual test D).
+    check('trước khi xóa: nối được', (await bash('s-alice', A, 'hostname')).out === 'tool-u-e2e-alice')
+    const res = await fetch(`${process.env.TOOL_MANAGER_URL}/release`, {
+      method: 'POST', headers: { 'content-type': 'application/json', 'x-tool-secret': process.env.TOOL_MANAGER_SECRET }, body: JSON.stringify({ zone: 'user:e2e-alice' }),
+    })
+    check('đã xóa container alice qua tool-manager', res.ok)
+    await new Promise(r => setTimeout(r, 1500))
+    const t0 = Date.now()
+    check('đọc file ngay sau khi xóa: tự tạo lại, không lỗi', (await read('s-alice', `${A}/docs/Ghi chú họp.md`)).includes('thứ Sáu'), `${Date.now() - t0} ms`)
+    check('bash sau khi xóa chạy bình thường', (await bash('s-alice', A, 'hostname')).out === 'tool-u-e2e-alice')
+  }
+
+  if (phase === 'kill-external') {
+    // Same process; the host runs `docker rm -f <alice tool container>` and then creates /tmp/go.
+    check('trước khi xóa: nối được', (await bash('s-alice', A, 'hostname')).out === 'tool-u-e2e-alice')
+    console.log('READY')
+    const { existsSync } = await import('node:fs')
+    while (!existsSync('/tmp/go')) await new Promise(r => setTimeout(r, 200))
+    const t0 = Date.now()
+    let first
+    try { first = await read('s-alice', `${A}/docs/Ghi chú họp.md`) } catch (e) { first = `LỖI ${e.message}` }
+    check('đọc file ngay sau docker rm -f: không lỗi', first.includes('thứ Sáu'), `${first.slice(0, 80)} ${Date.now() - t0} ms`)
+    check('bash sau docker rm -f chạy bình thường', (await bash('s-alice', A, 'hostname')).out === 'tool-u-e2e-alice')
+  }
+
   if (phase === 'reconnect') {
     // Run after `docker rm -f e2e-tool-u-e2e-alice` on the host.
     const again = await bash('s-alice', A, 'hostname; cat "docs/Ghi chú họp.md"')
