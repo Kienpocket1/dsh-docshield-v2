@@ -1,8 +1,8 @@
 {
   "name": "dsh-docshield-repo",
   "private": true,
-  "description": "Chạy test của cả docshield/ và gate/: npm test",
+  "description": "Chạy test của docshield/, gate/, exec-router/ và container/: npm test",
   "scripts": {
-    "test": "npm --prefix docshield test && npm --prefix gate test"
+    "test": "npm --prefix docshield test && npm --prefix gate test && node --test \"exec-router/test/*.test.mjs\" \"container/test/*.test.mjs\""
   }
 }

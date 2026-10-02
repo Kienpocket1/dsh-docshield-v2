@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import { ZONE, toolRunArgs, zoneSpec } from '../tool-manager.mjs'
 
 const TOKEN = 'a'.repeat(64)
+const PROXY = 'b'.repeat(64)
 
 describe('zone validation', () => {
   it('accepts only the three zone shapes', () => {
@@ -17,7 +18,7 @@ describe('zone validation', () => {
 
 describe('docker run arguments', () => {
   it('are constants plus the validated zone, as an array (no shell string)', () => {
-    const args = toolRunArgs('user:alice', TOKEN)
+    const args = toolRunArgs('user:alice', TOKEN, PROXY)
     assert.ok(Array.isArray(args))
     for (const flag of ['--read-only', '--init', '--cap-drop', 'ALL', 'no-new-privileges', '--pids-limit', '256', '--memory', '256m', '--memory-swap']) assert.ok(args.includes(flag), flag)
     assert.ok(args.includes('1000:1000'))
@@ -26,17 +27,39 @@ describe('docker run arguments', () => {
     assert.ok(!args.some(a => /privileged|docker\.sock|--network=host|^--pid(=|$)|^--ipc|^--userns/.test(a)))
   })
   it('admin sees admin + public docs; admin-review sees users read-only', () => {
-    const admin = toolRunArgs('admin', TOKEN).filter((a, i, all) => all[i - 1] === '--mount')
+    const admin = toolRunArgs('admin', TOKEN, PROXY).filter((a, i, all) => all[i - 1] === '--mount')
     assert.deepEqual(admin.map(m => m.split(',')[2]), ['dst=/data/admin', 'dst=/data/public_docs'])
     const review = toolRunArgs('admin-review', TOKEN).filter((a, i, all) => all[i - 1] === '--mount')
     assert.deepEqual(review, ['type=volume,src=docshield-storage,dst=/data/users,volume-subpath=users,readonly'])
   })
   it('refuses malformed tokens', () => {
-    assert.throws(() => toolRunArgs('user:alice', 'x; rm -rf /'))
+    assert.throws(() => toolRunArgs('user:alice', 'x; rm -rf /', PROXY))
+    assert.throws(() => toolRunArgs('user:alice', TOKEN, 'x; rm -rf /'))
+    assert.throws(() => toolRunArgs('user:alice', TOKEN))
   })
   it('tool containers join only the internal tools network', () => {
-    const args = toolRunArgs('user:alice', TOKEN)
+    const args = toolRunArgs('user:alice', TOKEN, PROXY)
     assert.deepEqual(args.filter((a, i) => args[i - 1] === '--network'), ['docshield-tools'])
+  })
+})
+
+describe('egress proxy settings', () => {
+  const envOf = args => args.filter((a, i) => args[i - 1] === '-e')
+  it('users and admin get proxy URLs for their own zone; admin-review gets none', () => {
+    const user = envOf(toolRunArgs('user:alice', TOKEN, PROXY))
+    for (const name of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']) assert.ok(user.includes(`${name}=http://user.alice:${PROXY}@egress-proxy:3128`), name)
+    assert.ok(user.includes('NODE_USE_ENV_PROXY=1'))
+    assert.ok(envOf(toolRunArgs('admin', TOKEN, PROXY)).includes(`HTTPS_PROXY=http://admin:${PROXY}@egress-proxy:3128`))
+    const review = envOf(toolRunArgs('admin-review', TOKEN, PROXY))
+    assert.ok(!review.some(e => /proxy/i.test(e)), review.join(' '))
+  })
+  it('matches what the proxy accepts', async () => {
+    const { authZone, proxyUser, zoneToken } = await import('../../container/egress-proxy.mjs')
+    const secret = 'c'.repeat(64)
+    const url = new URL(envOf(toolRunArgs('user:alice', TOKEN, zoneToken(secret, 'user:alice'))).find(e => e.startsWith('HTTPS_PROXY=')).slice(12))
+    const header = `Basic ${Buffer.from(`${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`).toString('base64')}`
+    assert.equal(authZone(header, secret), 'user:alice')
+    assert.equal(proxyUser('user:alice'), url.username)
   })
 })
 

@@ -11,6 +11,7 @@ import {
   CSRF_COOKIE, SESSION_COOKIE, SESSION_TTL_MS, cookie, formToken, issueSession, newCsrfToken, parseCookies, sameToken, verifySession,
 } from './session.mjs'
 import { validateUsername } from './store.mjs'
+import { readEgressLog } from './egress-log.mjs'
 import {
   renderAdmin, renderBar, renderLogin, renderNotice, renderPassword, renderRegister, renderSetup,
 } from './views.mjs'
@@ -38,9 +39,10 @@ const PAGE_HEADERS = {
  * @param {boolean} [deps.trustProxy] behind a local tunnel (cloudflared): take the client IP from
  *   CF-Connecting-IP / X-Forwarded-For and mark cookies Secure over https — only for requests
  *   arriving from this machine, so remote clients cannot spoof their IP
+ * @param {string} [deps.egressLog] egress proxy JSONL log (docker mode), shown to admins
  * @param {(msg: string) => void} [deps.log]
  */
-export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, log = () => {} }) {
+export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, egressLog, log = () => {} }) {
   const setupOpen = () => setupKey !== undefined && store.countUsers() === 0
   const sessionValue = req => parseCookies(req.headers.cookie)[SESSION_COOKIE]
   const currentUser = req => verifySession(secret, sessionValue(req), name => store.getUser(name))
@@ -262,6 +264,7 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
       users: store.listUsers(),
       audit: store.recentAudit(30),
       registrationOpen: store.registrationOpen(),
+      egress: readEgressLog(egressLog),
       ok: url?.searchParams.get('ok') ?? undefined,
       ...extra,
     }))

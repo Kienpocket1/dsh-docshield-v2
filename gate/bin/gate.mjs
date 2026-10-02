@@ -72,7 +72,7 @@ async function serve() {
   const filter = createFilter({ upstream, sessions, call, storageRoot: config.storageRoot, log })
   // No account yet: allow /gate/setup, guarded by a one-time key only this console shows.
   const setupKey = store.countUsers() === 0 ? randomBytes(6).toString('hex').match(/.{4}/g).join('-') : undefined
-  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), upstream, filter, setupKey, trustProxy: config.trustProxy, log })
+  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), upstream, filter, setupKey, trustProxy: config.trustProxy, egressLog: config.egressLog, log })
   await new Promise(resolve => gate.listen(config.port, config.host, resolve))
   log(`http://${config.host}:${config.port} (DSH ${upstream.origin})`)
   if (setupKey !== undefined) {

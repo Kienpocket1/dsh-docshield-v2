@@ -136,6 +136,16 @@ try {
     check('TC3 fork bomb bị chặn bởi pids-limit 256', live <= 256 && forkErrors > 0, `tiến trình sống ${live}, lỗi fork ${forkErrors}`)
   }
 
+  if (phase === 'egress') {
+    // The agent's real path (DSH bash tool → router → helper): the container's proxy settings must survive DSH's env scrubbing.
+    const a = await bash('s-alice', A, 'printf "%s\\n" "${HTTPS_PROXY%%:*}"; curl -s -o /dev/null -w "%{http_code}" -m 20 https://example.com')
+    const [scheme, code] = a.out.split('\n')
+    check('alice qua DSH: bash thấy HTTPS_PROXY', scheme === 'http', a.out)
+    check('alice qua DSH: curl https://example.com = 200', code === '200', a.out)
+    const r = await bash('s-review', '/data/users', 'curl -s -o /dev/null -w "%{http_code}" -m 10 https://example.com; echo " $?"')
+    check('admin-review qua DSH: không có internet', !r.out.startsWith('200'), r.out)
+  }
+
   if (phase === 'kill') {
     // Same process: a live connection, then the container is removed (as `docker rm -f` would), then
     // the very next calls must reconnect to the freshly started container without failing (manual test D).

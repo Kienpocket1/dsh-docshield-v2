@@ -32,6 +32,7 @@ const WORKSPACE = [
   '- File đặt trong {{cwd}}/docs được DocShield tự nạp làm tài liệu cá nhân (tài liệu chung chỉ admin công bố).',
   '- Câu hỏi về NỘI DUNG tài liệu (quy chế, hồ sơ, tài liệu đã nạp) vẫn phải theo đúng quy trình DocShield dưới đây, không trả lời bằng hiểu biết riêng hay bằng cách tự đọc file thay cho scoped_doc_search.',
   '- Việc khác (soạn/sửa file, xử lý dữ liệu, viết và chạy code…) thì làm bằng các công cụ trên, trong thư mục làm việc.',
+  '- Có internet qua proxy cho curl, python, node, npm (trang công khai, cổng 80/443; địa chỉ nội bộ, máy chủ và cổng khác bị chặn, có giới hạn lưu lượng). Riêng workspace xem dữ liệu mọi người (/data/users) không có mạng.',
 ].join('\n')
 
 const make = (header, role, extra) => `# Generated at image build by container/make-harness-presets.mjs: DSH Standard tool rows + DocShield.

@@ -16,5 +16,7 @@ export function loadConfig(env = process.env) {
     upstreamUrl: env.GATE_UPSTREAM_URL,
     // DocShield storage root: each user's sessions must live under <storageRoot>/users/<name>.
     storageRoot: env.DOCSHIELD_STORAGE_ROOT,
+    // Docker mode: the egress proxy's JSONL log (read-only mount), shown on /gate/admin.
+    egressLog: env.GATE_EGRESS_LOG,
   }
 }

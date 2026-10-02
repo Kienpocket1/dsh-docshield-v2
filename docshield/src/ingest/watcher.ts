@@ -1,7 +1,7 @@
 /**
  * Keep the index in step with the filesystem: a startup reconcile (index new
  * or changed files, retire documents whose file vanished or was retired) plus
- * a recursive fs.watch with per-path debounce for later changes. Every path is
+ * per-directory watchers with per-path debounce for later changes (see start()). Every path is
  * mapped through the binding-aware resolver, so a retired public file is never
  * indexed again while it stays on disk. Symlinks and junctions are never
  * followed (see safe-fs.ts): a link in `docs/` is treated as absent.
@@ -18,7 +18,6 @@ import { listSafe } from './safe-fs.js'
 const DEBOUNCE_MS = 1000
 
 export class StorageWatcher {
-  private watcher: FSWatcher | undefined
   private readonly timers = new Map<string, NodeJS.Timeout>()
 
   constructor(
@@ -77,26 +76,99 @@ export class StorageWatcher {
     }
   }
 
+  /**
+   * Watch every directory that can hold documents with its own non-recursive
+   * watcher: the root, `users`, each `users/<u>`, each `users/<u>/docs` and
+   * `public_docs`. Not `recursive: true`: on Linux, Node's recursive watcher
+   * loses a file once it is replaced by a rename (DSH's write tool saves that
+   * way), so later edits of it went unseen. A directory watch reports every
+   * entry change whatever its inode. New user folders are picked up as they appear.
+   */
   start(): void {
-    if (this.watcher !== undefined) return
-    this.watcher = watch(this.storageRoot, { recursive: true }, (_event, name) => {
-      if (name === null) return
-      const file = path.join(this.storageRoot, name.toString())
-      if (targetForPath(this.storageRoot, file) === null || !this.owns(file)) return
-      clearTimeout(this.timers.get(file))
-      this.timers.set(file, setTimeout(() => {
-        this.timers.delete(file)
-        void this.settle(file)
-      }, DEBOUNCE_MS))
-    })
-    this.watcher.on('error', error => this.log(`watcher error: ${error.message}`))
+    if (this.closed === false) return
+    this.closed = false
+    void this.sync(true)
   }
 
   close(): void {
-    this.watcher?.close()
-    this.watcher = undefined
+    this.closed = true
+    for (const w of this.dirs.values()) w.close()
+    this.dirs.clear()
     for (const timer of this.timers.values()) clearTimeout(timer)
     this.timers.clear()
+  }
+
+  private closed: boolean | undefined
+  private readonly dirs = new Map<string, FSWatcher>()
+  private syncing: Promise<void> | undefined
+  private resync = false
+
+  /** Bring the set of directory watchers in line with the tree (serialized; coalesces bursts). */
+  private sync(initial = false): Promise<void> {
+    if (this.syncing !== undefined) { this.resync = true; return this.syncing }
+    this.syncing = (async () => {
+      do {
+        this.resync = false
+        await this.syncOnce(initial)
+        initial = false
+      } while (this.resync && !this.closed)
+    })().finally(() => { this.syncing = undefined })
+    return this.syncing
+  }
+
+  private async syncOnce(initial: boolean): Promise<void> {
+    const root = this.storageRoot
+    const usersDir = path.join(root, 'users')
+    const owned = this.ownedScope
+    // directory → role: 'tree' dirs only matter for what appears in them, 'docs' dirs hold documents.
+    const want = new Map<string, 'tree' | 'docs'>([[root, 'tree']])
+    if (await this.isPlainDir(usersDir)) {
+      want.set(usersDir, 'tree')
+      for (const user of await listSafe(root, usersDir, { dirs: true })) {
+        if (owned !== undefined && owned !== `user:${user}`) continue
+        want.set(path.join(usersDir, user), 'tree')
+        const docs = path.join(usersDir, user, 'docs')
+        if (await this.isPlainDir(docs)) want.set(docs, 'docs')
+      }
+    }
+    const publicDir = path.join(root, 'public_docs')
+    if ((owned === undefined || owned === PUBLIC_SCOPE) && await this.isPlainDir(publicDir)) want.set(publicDir, 'docs')
+
+    for (const [dir, w] of this.dirs) if (!want.has(dir)) { w.close(); this.dirs.delete(dir) }
+    for (const [dir, role] of want) {
+      if (this.closed || this.dirs.has(dir)) continue
+      let w: FSWatcher
+      try {
+        w = watch(dir, (_event, name) => {
+          if (role === 'tree') { void this.sync(); return }
+          if (name !== null) this.schedule(path.join(dir, name.toString()))
+        })
+      } catch {
+        continue // vanished meanwhile; the next sync retries
+      }
+      w.on('error', () => { w.close(); this.dirs.delete(dir); void this.sync() })
+      this.dirs.set(dir, w)
+      // A docs folder that appeared after startup may already hold files written before its watcher existed.
+      if (role === 'docs' && !initial) for (const name of await listSafe(root, dir)) this.schedule(path.join(dir, name))
+    }
+  }
+
+  private async isPlainDir(dir: string): Promise<boolean> {
+    try { return (await lstat(dir)).isDirectory() } catch { return false }
+  }
+
+  private schedule(file: string): void {
+    if (targetForPath(this.storageRoot, file) === null || !this.owns(file)) return
+    clearTimeout(this.timers.get(file))
+    this.timers.set(file, setTimeout(() => {
+      this.timers.delete(file)
+      void this.settle(file)
+    }, DEBOUNCE_MS))
+  }
+
+  /** Directories currently watched (tests). */
+  watchedDirs(): string[] {
+    return [...this.dirs.keys()]
   }
 
   private async settle(file: string): Promise<void> {

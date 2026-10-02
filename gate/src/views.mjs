@@ -1,5 +1,6 @@
 /** Server-rendered gate pages (no scripts; CSP forbids them). */
 import { MIN_PASSWORD_LENGTH } from './password.mjs'
+import { summarize, zoneLabel } from './egress-log.mjs'
 
 export const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
@@ -102,7 +103,31 @@ const EVENT_LABELS = {
   setup_failed: 'Sai mã thiết lập', user_added: 'Tạo bằng dòng lệnh', registration_toggled: 'Bật/tắt đăng ký',
 }
 
-/** @param {{ token: string, me: object, users: object[], audit: object[], registrationOpen: boolean, ok?: string, error?: string, tempPassword?: { username: string, password: string } }} v */
+const DENY_LABELS = {
+  auth: 'Sai thông tin proxy', port: 'Cổng không cho phép', 'private-ip': 'Địa chỉ nội bộ', ipv6: 'IPv6 không hỗ trợ', dns: 'Không phân giải được tên',
+  'bad-host': 'Tên máy không hợp lệ', 'bad-request': 'Yêu cầu không hợp lệ', 'rate-limit': 'Quá số kết nối/phút', 'too-many-connections': 'Quá số kết nối đồng thời',
+  'upload-limit': 'Vượt hạn mức gửi đi', 'download-limit': 'Vượt hạn mức tải về', idle: 'Hết thời gian chờ', upstream: 'Lỗi máy đích', error: 'Lỗi',
+}
+const bytes = n => { n = Number(n) || 0; return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB` }
+
+/** Internet access through the egress proxy (docker mode only; undefined → section hidden). */
+function renderEgress(entries) {
+  if (entries === undefined) return ''
+  const date = s => escapeHtml(String(s).slice(0, 19).replace('T', ' '))
+  const totals = summarize(entries, Date.now() - 24 * 3600_000)
+  const totalRows = totals.map(t => `<tr><td>${escapeHtml(zoneLabel(t.zone))}</td><td>${t.requests}</td><td>${t.denied}</td><td>${bytes(t.up)}</td><td>${bytes(t.down)}</td></tr>`).join('')
+  const rows = entries.slice(0, 100).map(e => {
+    const [reason, detail] = String(e.deny ?? '').split(' ')
+    const result = e.deny ? `<span class="pill off">${escapeHtml(DENY_LABELS[reason] ?? reason)}${detail ? ` · ${escapeHtml(detail)}` : ''}</span>` : `<span class="pill on">${escapeHtml(e.status)}</span>`
+    return `<tr><td>${date(e.t)}</td><td>${escapeHtml(zoneLabel(e.zone))}</td><td>${escapeHtml(e.method)} ${escapeHtml(e.host)}:${escapeHtml(e.port)}</td><td>${result}</td><td>${bytes(e.up)} / ${bytes(e.down)}</td></tr>`
+  }).join('')
+  return `<h2>Truy cập internet (24 giờ qua)</h2>
+${totals.length === 0 ? '<p>Chưa có truy cập nào.</p>' : `<div class="scroll"><table class="table"><thead><tr><th>Tài khoản</th><th>Kết nối</th><th>Bị chặn</th><th>Gửi đi</th><th>Tải về</th></tr></thead><tbody>${totalRows}</tbody></table></div>`}
+${rows ? `<h2>Truy cập internet gần đây</h2>
+<div class="scroll"><table class="table"><thead><tr><th>Thời điểm (UTC)</th><th>Tài khoản</th><th>Đích</th><th>Kết quả</th><th>Gửi / nhận</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}`
+}
+
+/** @param {{ token: string, me: object, users: object[], audit: object[], registrationOpen: boolean, ok?: string, error?: string, tempPassword?: { username: string, password: string }, egress?: object[] }} v */
 export function renderAdmin(v) {
   const action = (username, act, label, cls = 'ghost') =>
     `<form method="post" action="/gate/admin">${hidden('token', v.token)}${hidden('username', username)}${hidden('action', act)}<button class="${cls}" type="submit">${label}</button></form>`
@@ -139,6 +164,7 @@ ${action('-', v.registrationOpen ? 'close_registration' : 'open_registration', v
 <div class="scroll"><table class="table"><thead><tr><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th>Đăng nhập gần nhất</th><th>Thao tác</th></tr></thead><tbody>${accountRows}</tbody></table></div>
 <h2>Nhật ký gần đây</h2>
 <div class="scroll"><table class="table"><thead><tr><th>Thời điểm (UTC)</th><th>Tài khoản</th><th>Sự kiện</th><th>IP</th></tr></thead><tbody>${auditRows}</tbody></table></div>
+${renderEgress(v.egress)}
 </main>`)
 }
 

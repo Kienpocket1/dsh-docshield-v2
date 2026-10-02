@@ -7,8 +7,11 @@
  * against a strict pattern before anything is built, and processes are
  * spawned with argument arrays, never a shell string (TC2).
  *
- * It also starts dsh-main itself, with a fresh secret every run (passed only
- * through the environment), and stops everything when it exits.
+ * It also starts dsh-main and the egress proxy itself, each with a fresh secret
+ * every run (passed only through the environment), and stops everything when it
+ * exits. Tool containers reach the internet only through that proxy
+ * (container/egress-proxy.mjs): their network is internal, and they get proxy
+ * credentials for their own zone (admin-review gets none: it stays offline).
  *
  *   node exec-router/tool-manager.mjs            start the whole system
  * A zone over its disk quota is blocked until tool-manager restarts; after a
@@ -21,6 +24,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import http from 'node:http'
 import { promisify } from 'node:util'
+import { proxyUser, zoneToken } from '../container/egress-proxy.mjs'
 
 const run = promisify(execFile)
 const DOCKER = process.env.DOCKER_BIN ?? (existsSync('E:/Docker/DockerDesktop/resources/bin/docker.exe') ? 'E:/Docker/DockerDesktop/resources/bin/docker.exe' : 'docker')
@@ -34,6 +38,11 @@ const IMAGE_MAIN = process.env.MAIN_IMAGE ?? 'docshield-dsh-main:dev'
 const NET_TOOLS = `${P}-tools`
 const VOL = { storage: `${P}-storage`, home: `${P}-home`, db: `${P}-db`, gate: `${P}-gate` }
 const MAIN = `${P}-dsh-main`
+const NET_EGRESS = `${P}-egress`
+const VOL_EGRESS = `${P}-egress-log`
+const PROXY = `${P}-egress-proxy`
+/** Proxy secret of this run; tool containers get HMAC(secret, zone) as their proxy password. */
+let egressSecret = ''
 
 export const ZONE = /^(user:[a-z0-9][a-z0-9_-]{2,31}|admin|admin-review)$/
 
@@ -47,17 +56,30 @@ export function zoneSpec(zone) {
   return { name: `${P}-tool-u-${user}`, mounts: sub(`users/${user}`, `/data/users/${user}`), root: `/data/users/${user}` }
 }
 
-/** Every `docker run` argument for a tool container. Constants only, plus the validated zone spec and a fresh token. */
-export function toolRunArgs(zone, token) {
+/**
+ * Proxy settings of a zone's tool container: curl, python, npm and (with NODE_USE_ENV_PROXY)
+ * Node's fetch follow them. Not a security boundary on its own: the container's network is
+ * internal, so without the proxy there is no way out at all. admin-review stays offline.
+ */
+export function proxyEnv(zone, proxyPassword) {
+  if (zone === 'admin-review') return []
+  if (!/^[0-9a-f]{64}$/.test(proxyPassword ?? '')) throw new Error('mật khẩu proxy không hợp lệ')
+  const url = `http://${proxyUser(zone)}:${proxyPassword}@egress-proxy:3128`
+  return [...['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy'].flatMap(name => ['-e', `${name}=${url}`]), '-e', 'NODE_USE_ENV_PROXY=1']
+}
+
+/** Every `docker run` argument for a tool container. Constants only, plus the validated zone spec, a fresh token and the zone's proxy password. */
+export function toolRunArgs(zone, token, proxyPassword) {
   const spec = zoneSpec(zone)
   if (!/^[0-9a-f]{64}$/.test(token)) throw new Error('token không hợp lệ')
+  const proxy = proxyEnv(zone, proxyPassword)
   return ['run', '-d', '--rm', '--name', spec.name, '--hostname', spec.name.slice(P.length + 1),
     '--network', NET_TOOLS, '--network-alias', spec.name,
     '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,size=64m,mode=1777', '--user', '1000:1000',
     '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
     // --init reaps orphaned zombies; the pids cap counts threads (each node process has ~7-10), so 256 still stops fork bombs.
     '--init', '--memory', '256m', '--memory-swap', '256m', '--cpus', '0.5', '--pids-limit', '256',
-    '--label', `${P}.role=tool`, '-e', `LAUNCHER_TOKEN=${token}`,
+    '--label', `${P}.role=tool`, '-e', `LAUNCHER_TOKEN=${token}`, ...proxy,
     ...spec.mounts, IMAGE_TOOLS]
 }
 
@@ -67,7 +89,9 @@ const safeEqual = (a, b) => { const x = Buffer.from(String(a ?? '')); const y = 
 async function ensureInfra() {
   const nets = (await docker(['network', 'ls', '--format', '{{.Name}}'])).stdout.split(/\r?\n/)
   if (!nets.includes(NET_TOOLS)) await docker(['network', 'create', '--internal', NET_TOOLS])
-  for (const v of Object.values(VOL)) await docker(['volume', 'create', v])
+  // The proxy's own way out: an ordinary bridge that no other container joins.
+  if (!nets.includes(NET_EGRESS)) await docker(['network', 'create', NET_EGRESS])
+  for (const v of [...Object.values(VOL), VOL_EGRESS]) await docker(['volume', 'create', v])
 }
 
 async function removeLeftovers() {
@@ -109,7 +133,7 @@ async function ensure(zone) {
   const { name } = zoneSpec(zone)
   await docker(['rm', '-f', name]).catch(() => {})
   const token = randomBytes(32).toString('hex')
-  await docker(toolRunArgs(zone, token))
+  await docker(toolRunArgs(zone, token, zone === 'admin-review' ? undefined : zoneToken(egressSecret, zone)))
   const entry = { name, token }
   running.set(zone, entry)
   if (!grace.has(zone)) grace.set(zone, Date.now() + 10 * 60_000)
@@ -139,6 +163,18 @@ async function quotaSweep() {
 
 function log(msg) { console.log(`${new Date().toISOString().slice(11, 19)} tool-manager: ${msg}`) }
 
+/** The egress proxy: on its own bridge, reachable from the tools network as "egress-proxy". */
+async function startProxy() {
+  await docker(['rm', '-f', PROXY]).catch(() => {})
+  await docker(['run', '-d', '--name', PROXY, '--label', `${P}.role=proxy`, '--network', NET_EGRESS,
+    '--read-only', '--user', '1000:1000', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+    '--init', '--memory', '128m', '--memory-swap', '128m', '--cpus', '0.5', '--pids-limit', '64',
+    '-e', `EGRESS_SECRET=${egressSecret}`, '-e', 'EGRESS_LOG=/var/egress/egress.jsonl', '-v', `${VOL_EGRESS}:/var/egress`,
+    '--entrypoint', 'node', IMAGE_TOOLS, '/opt/tool/egress-proxy.mjs'])
+  await docker(['network', 'connect', '--alias', 'egress-proxy', NET_TOOLS, PROXY])
+  return spawn(DOCKER, ['logs', '-f', PROXY], { stdio: 'inherit', windowsHide: true })
+}
+
 async function startMain(secret) {
   await docker(['rm', '-f', MAIN]).catch(() => {})
   const bridgeSubnet = (await docker(['network', 'inspect', 'bridge', '-f', '{{(index .IPAM.Config 0).Subnet}}'])).stdout.trim()
@@ -146,7 +182,7 @@ async function startMain(secret) {
     '--network', 'bridge', '-p', `${PUBLISH}:3444`, '--add-host', 'host.docker.internal:host-gateway',
     '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
     '-e', `TOOL_MANAGER_URL=http://host.docker.internal:${PORT}`, '-e', `TOOL_MANAGER_SECRET=${secret}`,
-    '-e', `GATE_BIND_SUBNET=${bridgeSubnet}`,
+    '-e', `GATE_BIND_SUBNET=${bridgeSubnet}`, '-e', 'GATE_EGRESS_LOG=/var/egress/egress.jsonl', '-v', `${VOL_EGRESS}:/var/egress:ro`,
     '-v', `${VOL.storage}:/data`, '-v', `${VOL.home}:/home/dsh`, '-v', `${VOL.db}:/var/docshield`, '-v', `${VOL.gate}:/var/gate`,
     IMAGE_MAIN])
   await docker(['network', 'connect', NET_TOOLS, MAIN])
@@ -179,6 +215,9 @@ async function serve() {
   })
   await new Promise(r => server.listen(PORT, '127.0.0.1', r))
   log(`nghe 127.0.0.1:${PORT}; mạng công cụ ${NET_TOOLS}; volumes ${Object.values(VOL).join(', ')}`)
+  egressSecret = randomBytes(32).toString('hex')
+  const proxyLogs = await startProxy()
+  log(`đã bật ${PROXY} (internet cho container công cụ)`)
   const logs = await startMain(secret)
   log(`đã bật ${MAIN}; đăng nhập tại http://${PUBLISH}`)
   const sweep = setInterval(() => void quotaSweep().catch(e => log(`quota: ${e.message}`)), 60_000)
@@ -189,6 +228,7 @@ async function serve() {
     clearInterval(sweep)
     log('đang tắt...')
     logs.kill()
+    proxyLogs.kill()
     await removeLeftovers().catch(() => {})
     server.close()
     process.exit(0)

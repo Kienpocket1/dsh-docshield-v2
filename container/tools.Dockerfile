@@ -12,7 +12,10 @@ RUN apt-get update \
 WORKDIR /opt/tool
 # Native part of the helper: Landlock launcher used by the local sandbox provider (prebuilt linux-x64).
 RUN npm init -y >/dev/null && npm install --omit=dev @deepseek-ai/node-addon-system@0.1.2 && npm cache clean --force
-COPY container/build/helper.bundle.mjs container/launcher.mjs ./
+COPY container/build/helper.bundle.mjs container/launcher.mjs container/egress-proxy.mjs ./
+# Log folder of the egress proxy (same image, other entrypoint). The marker file makes Docker copy
+# this ownership into the empty <prefix>-egress-log volume on first mount.
+RUN mkdir -p /var/egress && touch /var/egress/.keep && chown -R 1000:1000 /var/egress
 # A bundled DSH module reads its version from "../package.json" next to the bundle.
 RUN printf '{"name":"dsh-helper-bundle","version":"0.1.6-alpha.2","type":"module"}\n' > /opt/package.json
 
