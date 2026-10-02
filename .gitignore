@@ -5,3 +5,6 @@
 # dsh-gate runtime data: accounts DB, cookie secret, per-user DSH homes (settings + API keys), test accounts
 gate/var/
 gate/var-test/
+
+# Build inputs prepared from the DSH source (container/prepare.mjs)
+container/build/

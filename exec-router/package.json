@@ -1,0 +1,15 @@
+{
+  "name": "dsh-exec-router",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plugin DSH: chạy công cụ của agent (fs, tiến trình, sandbox) trong container công cụ của từng người dùng.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=24.0.0" },
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./tool-connection": "./src/tool-connection.mjs",
+    "./package.json": "./package.json"
+  }
+}

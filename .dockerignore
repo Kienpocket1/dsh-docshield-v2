@@ -1,0 +1,5 @@
+**/node_modules
+.git
+gate/var
+gate/var-test
+*.log
