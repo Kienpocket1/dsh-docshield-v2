@@ -5,7 +5,8 @@ import http from 'node:http'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, describe, it } from 'node:test'
-import { createGate } from '../src/app.mjs'
+import { createGate, isTrustedPeer } from '../src/app.mjs'
+import { takeCalibrationToken } from '../src/config.mjs'
 import { hashPassword } from '../src/password.mjs'
 import { GateStore } from '../src/store.mjs'
 import { unused } from './helpers.mjs'
@@ -13,12 +14,13 @@ import { unused } from './helpers.mjs'
 const dir = mkdtempSync(path.join(tmpdir(), 'dsh-gate-proxy-'))
 after(() => rmSync(dir, { recursive: true, force: true }))
 
-async function startGate(trustProxy, name) {
+async function startGate(trustProxy, name, extra = {}) {
   const store = new GateStore(path.join(dir, `${name}.db`))
   store.addUser('alice', 'user', await hashPassword('alice-password'))
-  const gate = createGate({ store, secret: Buffer.alloc(32, 5), ...unused, trustProxy })
+  const logs = []
+  const gate = createGate({ store, secret: Buffer.alloc(32, 5), ...unused, trustProxy, log: m => logs.push(m), ...extra })
   await new Promise(r => gate.listen(0, '127.0.0.1', r))
-  return { store, gate, port: gate.address().port }
+  return { store, gate, logs, port: gate.address().port }
 }
 
 const request = (port, method, p, headers = {}, body) => new Promise((resolve, reject) => {
@@ -59,5 +61,51 @@ describe('trusted local proxy', () => {
     await failLogin(g, { 'cf-connecting-ip': '203.0.113.7' })
     assert.equal(g.store.recentAudit(1)[0].ip, '127.0.0.1')
     g.gate.close(); g.store.close()
+  })
+})
+
+describe('trusted peers (Docker + tunnel)', () => {
+  it('trusts loopback and exactly the listed addresses, IPv4-mapped or not', () => {
+    assert.ok(isTrustedPeer('127.0.0.1'))
+    assert.ok(isTrustedPeer('::1'))
+    assert.ok(isTrustedPeer('192.168.65.1', ['192.168.65.1']))
+    assert.ok(isTrustedPeer('::ffff:192.168.65.1', ['192.168.65.1']))
+    assert.ok(isTrustedPeer('192.168.65.1', ['::ffff:192.168.65.1'].map(a => a.replace(/^::ffff:/, ''))))
+    assert.ok(!isTrustedPeer('192.168.65.2', ['192.168.65.1']))
+    assert.ok(!isTrustedPeer('172.17.0.1', []))
+    assert.ok(!isTrustedPeer(undefined, ['192.168.65.1']))
+    assert.ok(!isTrustedPeer('', ['']))
+  })
+
+  it('takeCalibrationToken returns a Buffer and removes the variable from the environment', () => {
+    const env = { GATE_CALIBRATION_TOKEN: 'b'.repeat(64), OTHER: 'x' }
+    const token = takeCalibrationToken(env)
+    assert.ok(Buffer.isBuffer(token))
+    assert.equal(token.toString(), 'b'.repeat(64))
+    assert.deepEqual(Object.keys(env), ['OTHER'])
+    assert.equal(takeCalibrationToken({}), undefined)
+  })
+
+  it('POST /gate/calibrate: wrong token 403, right token 204 once (token zeroed), then 404 even with the old token', async () => {
+    const token = Buffer.from('c'.repeat(64))
+    const g = await startGate(true, 'calib', { calibrationToken: token })
+    assert.equal((await request(g.port, 'GET', '/gate/calibrate', { 'x-gate-calibration': 'c'.repeat(64) })).status, 404)
+    assert.equal((await request(g.port, 'POST', '/gate/calibrate', { 'x-gate-calibration': 'd'.repeat(64) })).status, 403)
+    assert.equal((await request(g.port, 'POST', '/gate/calibrate', {})).status, 403)
+    assert.equal((await request(g.port, 'POST', '/gate/calibrate', { 'x-gate-calibration': 'c'.repeat(64) })).status, 204)
+    assert.ok(token.every(b => b === 0), 'token buffer zeroed')
+    assert.equal((await request(g.port, 'POST', '/gate/calibrate', { 'x-gate-calibration': 'c'.repeat(64) })).status, 404)
+    assert.ok(g.logs.some(m => /tin địa chỉ proxy 127.0.0.1/.test(m)))
+    assert.ok(!g.logs.join(' ').includes('c'.repeat(16)), 'token never logged')
+    g.gate.close(); g.store.close()
+  })
+
+  it('no calibration route without trustProxy or without a token', async () => {
+    const off = await startGate(false, 'calib-off', { calibrationToken: Buffer.from('e'.repeat(64)) })
+    assert.equal((await request(off.port, 'POST', '/gate/calibrate', { 'x-gate-calibration': 'e'.repeat(64) })).status, 404)
+    off.gate.close(); off.store.close()
+    const none = await startGate(true, 'calib-none')
+    assert.equal((await request(none.port, 'POST', '/gate/calibrate', { 'x-gate-calibration': '' })).status, 404)
+    none.gate.close(); none.store.close()
   })
 })

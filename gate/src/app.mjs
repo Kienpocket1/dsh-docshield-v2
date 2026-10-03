@@ -39,14 +39,21 @@ const PAGE_HEADERS = {
  * @param {boolean} [deps.trustProxy] behind a local tunnel (cloudflared): take the client IP from
  *   CF-Connecting-IP / X-Forwarded-For and mark cookies Secure over https — only for requests
  *   arriving from this machine, so remote clients cannot spoof their IP
+ * @param {string[]} [deps.trustedPeers] besides loopback, the exact addresses the local tunnel's
+ *   connections arrive from (Docker mode: the NAT address of the published port)
+ * @param {Buffer} [deps.calibrationToken] Docker mode: one-time secret of POST /gate/calibrate, which
+ *   records the caller's address as a trusted peer (the tool-manager calls it over the same path
+ *   cloudflared uses); zeroed and gone after the first success
  * @param {string} [deps.egressLog] egress proxy JSONL log (docker mode), shown to admins
  * @param {(msg: string) => void} [deps.log]
  */
-export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, egressLog, log = () => {} }) {
+export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, trustedPeers = [], calibrationToken, egressLog, log = () => {} }) {
   const setupOpen = () => setupKey !== undefined && store.countUsers() === 0
   const sessionValue = req => parseCookies(req.headers.cookie)[SESSION_COOKIE]
   const currentUser = req => verifySession(secret, sessionValue(req), name => store.getUser(name))
-  const fromTrustedProxy = req => trustProxy && isLoopback(req.socket.remoteAddress)
+  const peers = trustedPeers.map(normalizeAddr).filter(Boolean)
+  let calibration = trustProxy && calibrationToken?.length ? calibrationToken : undefined
+  const fromTrustedProxy = req => trustProxy && isTrustedPeer(req.socket.remoteAddress, peers)
   const ipOf = req => {
     if (fromTrustedProxy(req)) {
       const cf = req.headers['cf-connecting-ip']
@@ -81,6 +88,7 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
 
   async function handle(req, res) {
     const url = new URL(req.url ?? '/', 'http://gate.local')
+    if (url.pathname === '/gate/calibrate') return calibrate(req, res)
     const route = ROUTES[url.pathname]
     if (route !== undefined) {
       if (url.pathname === '/gate/setup' && !setupOpen()) return redirect(res, '/gate/login')
@@ -117,6 +125,23 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
     }
     filter.handleUpgrade(req, socket, head, user).catch(err => { log(`upgrade ${user.username}: ${err.message}`); socket.destroy() })
   })
+
+  /**
+   * One-time: the tool-manager proves it knows the token, over the very path the tunnel will use;
+   * the address this connection arrives from becomes a trusted peer. Then the route is gone (404).
+   */
+  function calibrate(req, res) {
+    if (calibration === undefined || req.method !== 'POST') return json(res, 404, { error: 'not found' })
+    const given = Buffer.from(String(req.headers['x-gate-calibration'] ?? ''))
+    if (given.length !== calibration.length || !timingSafeEqual(given, calibration)) return json(res, 403, { error: 'forbidden' })
+    const addr = normalizeAddr(req.socket.remoteAddress)
+    calibration.fill(0)
+    calibration = undefined
+    if (addr && !peers.includes(addr)) peers.push(addr)
+    log(`gate: tin địa chỉ proxy ${addr} (CF-Connecting-IP / X-Forwarded-For từ địa chỉ này)`)
+    res.writeHead(204)
+    res.end()
+  }
 
   // ---------- anonymous pages (double-submit CSRF cookie) ----------
 
@@ -376,6 +401,10 @@ function secureCookies(res) {
 }
 
 const isLoopback = addr => addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1'
+/** IPv4-mapped IPv6 ("::ffff:1.2.3.4") → "1.2.3.4"; anything else unchanged. */
+const normalizeAddr = addr => (typeof addr === 'string' ? addr.replace(/^::ffff:(?=\d+\.\d+\.\d+\.\d+$)/i, '').trim() : '')
+/** A connection whose forwarded headers may be believed: loopback, or exactly one of `peers`. */
+export const isTrustedPeer = (addr, peers = []) => isLoopback(addr) || (normalizeAddr(addr) !== '' && peers.includes(normalizeAddr(addr)))
 
 function page(res, status, html) {
   res.writeHead(status, PAGE_HEADERS)

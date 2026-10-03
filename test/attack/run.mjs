@@ -41,7 +41,7 @@ const TC = {
   TC4: 'Symlink thoát khỏi vùng', TC5: 'Lời gọi công cụ không gắn phiên', TC6: 'Subagent', TC7: 'Đi ngang giữa các container',
   TC8: 'Tìm kiếm rg/grep', TC9: 'Đua TOCTOU khi đọc file (phía host)', TC10: 'Đường dẫn lạ, tên tiếng Việt', TC11: 'Khóa file NTFS ↔ ext4',
   TC12: 'Bom dữ liệu qua socket', TC13: 'Điều khiển tool-manager trái phép', TC14: 'SSRF, tấn công mạng nội bộ', TC15: 'Rò rỉ dữ liệu ra ngoài',
-  TC16: 'Botnet, spam, cổng lạ', Gate: 'Đăng nhập, cookie, phân quyền giao diện', Admin: 'Quyền xem dữ liệu của admin',
+  TC16: 'Botnet, spam, cổng lạ', 'TC-IP': 'IP thật của người dùng sau Cloudflare Tunnel', Gate: 'Đăng nhập, cookie, phân quyền giao diện', Admin: 'Quyền xem dữ liệu của admin',
   'Phục hồi': 'Container bị xóa giữa chừng', 'Nạp tài liệu': 'DocShield nạp file agent ghi (cần mô hình)', 'Chức năng': 'Chức năng vẫn chạy đúng',
   Unit: 'Unit test (không cần Docker)', Lỗi: 'Lỗi của chính bộ test',
 }
@@ -173,7 +173,7 @@ if (WITH_MODEL) {
 say('khởi động hệ thống thử (tool-manager → proxy → dsh-main)...')
 manager = spawn(process.execPath, [path.join(ROOT, 'exec-router', 'tool-manager.mjs')], {
   cwd: ROOT, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
-  env: { ...process.env, TOOL_PREFIX: P, GATE_PUBLISH: `127.0.0.1:${GATE_PORT}`, TOOL_MANAGER_PORT: String(MANAGER_PORT), TOOL_QUOTA_MB: '20', TOOL_QUOTA_GRACE_S: '0', TOOL_QUOTA_SWEEP_S: '5' },
+  env: { ...process.env, TOOL_PREFIX: P, GATE_PUBLISH: `127.0.0.1:${GATE_PORT}`, TOOL_MANAGER_PORT: String(MANAGER_PORT), TOOL_QUOTA_MB: '20', TOOL_QUOTA_GRACE_S: '0', TOOL_QUOTA_SWEEP_S: '5', GATE_TRUST_PROXY: '1' },
 })
 const managerLog = []
 const keep = d => { for (const l of String(d).split('\n').filter(Boolean)) { managerLog.push(l); if (managerLog.length > 400) managerLog.shift() } }
@@ -225,7 +225,16 @@ await runGroup('docker rm -f từ bên ngoài', DOCKER, inMain('kill-external'),
 })
 await runGroup('Internet qua DSH', DOCKER, inMain('egress'))
 await runGroup('Internet qua proxy (TC14–16)', process.execPath, [path.join(ROOT, 'exec-router', 'test', 'e2e-egress.mjs')], { env: hostEnv, timeoutMs: 15 * 60_000 })
-await runGroup('Gate', process.execPath, [path.join(ROOT, 'test', 'attack', 'gate.mjs')], { env: { ...hostEnv, ATK_PASSWORDS: JSON.stringify(passwords) } })
+// TC-IP: the tool-manager measured the tunnel's source address through the published port (one-time token).
+{
+  const measured = await waitFor(() => managerLog.find(l => /địa chỉ (của )?tunnel/.test(l)) ?? '', l => l !== '', 60_000, 1000, 'đo địa chỉ tunnel').catch(() => '')
+  const peer = /tin địa chỉ proxy (\S+)/.exec(managerLog.join('\n'))?.[1] ?? (docker(['logs', MAIN]) ?? '').match(/tin địa chỉ proxy (\S+)/)?.[1]
+  record('IP thật sau tunnel', 'TC-IP', /đã nhận/.test(measured), 'tool-manager đo được địa chỉ nguồn của cổng publish (token dùng một lần)', `địa chỉ Docker Desktop dùng: ${peer ?? '?'}`)
+  console.log(`   ${/đã nhận/.test(measured) ? '✓' : '✗'} [TC-IP] đo địa chỉ tunnel: ${peer ?? measured}`)
+  const again = await fetch(`${GATE}/gate/calibrate`, { method: 'POST', headers: { 'x-gate-calibration': 'x'.repeat(64) } }).then(r => r.status, () => 0)
+  record('IP thật sau tunnel', 'TC-IP', again === 404, 'sau lần đo, /gate/calibrate không còn (404)', again)
+}
+await runGroup('Gate', process.execPath, [path.join(ROOT, 'test', 'attack', 'gate.mjs')], { env: { ...hostEnv, ATK_PASSWORDS: JSON.stringify(passwords), ATK_TRUST_PROXY: '1' } })
 await runGroup('Docker & tool-manager (TC2, TC3, TC11, TC13)', process.execPath, [path.join(ROOT, 'test', 'attack', 'resources.mjs')], { env: hostEnv })
 if (WITH_MODEL) await modelGroup()
 // Last: leaves alice blocked until the tool-manager restarts.

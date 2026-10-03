@@ -78,3 +78,17 @@ describe('keyedQueue', () => {
     assert.deepEqual(log, ['b1', 'a1', 'a2'])
   })
 })
+
+describe('trustEnv (Docker + tunnel)', () => {
+  it('passes trust + a one-time token only when on and published on loopback', async () => {
+    const { trustEnv } = await import('../tool-manager.mjs')
+    const token = 'd'.repeat(64)
+    assert.deepEqual(trustEnv('127.0.0.1:3444', { GATE_TRUST_PROXY: '1' }, token).args, ['-e', 'GATE_TRUST_PROXY=1', '-e', `GATE_CALIBRATION_TOKEN=${token}`])
+    const lan = trustEnv('0.0.0.0:3444', { GATE_TRUST_PROXY: '1' }, token)
+    assert.deepEqual(lan.args, [])
+    assert.match(lan.warn, /bỏ qua/)
+    assert.deepEqual(trustEnv('127.0.0.1:3444', {}, token), { args: [] })
+    assert.deepEqual(trustEnv('127.0.0.1:3444', { GATE_TRUST_PROXY: '0' }, token), { args: [] })
+    assert.throws(() => trustEnv('127.0.0.1:3444', { GATE_TRUST_PROXY: '1' }, 'x; rm'))
+  })
+})

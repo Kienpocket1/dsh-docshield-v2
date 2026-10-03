@@ -12,7 +12,7 @@ import { mkdirSync } from 'node:fs'
 import path from 'node:path'
 import readline from 'node:readline'
 import { createGate } from '../src/app.mjs'
-import { loadConfig } from '../src/config.mjs'
+import { loadConfig, takeCalibrationToken } from '../src/config.mjs'
 import { createFilter } from '../src/filter.mjs'
 import { hashPassword } from '../src/password.mjs'
 import { loadSecret } from '../src/session.mjs'
@@ -21,6 +21,9 @@ import { GateStore } from '../src/store.mjs'
 import { Upstream } from '../src/upstream.mjs'
 
 const config = loadConfig()
+// One-time calibration secret (Docker + tunnel): kept as a Buffer the gate zeroes after use, and
+// removed from this process's environment right away.
+const calibrationToken = takeCalibrationToken()
 mkdirSync(config.varDir, { recursive: true })
 const store = new GateStore(path.join(config.varDir, 'gate.db'))
 const [cmd, sub, name] = process.argv.slice(2)
@@ -72,7 +75,7 @@ async function serve() {
   const filter = createFilter({ upstream, sessions, call, storageRoot: config.storageRoot, log })
   // No account yet: allow /gate/setup, guarded by a one-time key only this console shows.
   const setupKey = store.countUsers() === 0 ? randomBytes(6).toString('hex').match(/.{4}/g).join('-') : undefined
-  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), upstream, filter, setupKey, trustProxy: config.trustProxy, egressLog: config.egressLog, log })
+  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), upstream, filter, setupKey, trustProxy: config.trustProxy, trustedPeers: config.trustedPeers, calibrationToken, egressLog: config.egressLog, log })
   await new Promise(resolve => gate.listen(config.port, config.host, resolve))
   log(`http://${config.host}:${config.port} (DSH ${upstream.origin})`)
   if (setupKey !== undefined) {

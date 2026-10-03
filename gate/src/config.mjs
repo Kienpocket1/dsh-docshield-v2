@@ -10,6 +10,9 @@ export function loadConfig(env = process.env) {
     port: Number(env.GATE_PORT ?? 3444),
     // Set to 1 when a local tunnel (cloudflared) forwards internet traffic to the gate.
     trustProxy: env.GATE_TRUST_PROXY === '1',
+    // Docker mode: exact addresses (besides loopback) the tunnel's connections come from; usually
+    // learned at start through /gate/calibrate instead (GATE_CALIBRATION_TOKEN, read in bin/gate.mjs).
+    trustedPeers: (env.GATE_TRUSTED_PEERS ?? '').split(',').map(s => s.trim()).filter(Boolean),
     // Accounts, cookie secret and session ownership. Keep it outside the repo in production.
     varDir: path.resolve(env.GATE_VAR_DIR ?? path.join(root, 'var')),
     // The shared DSH, with its launch token (set by the plugin).
@@ -19,4 +22,14 @@ export function loadConfig(env = process.env) {
     // Docker mode: the egress proxy's JSONL log (read-only mount), shown on /gate/admin.
     egressLog: env.GATE_EGRESS_LOG,
   }
+}
+
+/**
+ * The one-time calibration secret as a Buffer (so it can be zeroed after use), removed from
+ * `env` at once so nothing started later inherits or prints it. Undefined when not set.
+ */
+export function takeCalibrationToken(env = process.env) {
+  const value = env.GATE_CALIBRATION_TOKEN
+  delete env.GATE_CALIBRATION_TOKEN
+  return value ? Buffer.from(value) : undefined
 }

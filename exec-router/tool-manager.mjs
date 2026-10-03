@@ -178,18 +178,54 @@ async function startProxy() {
   return spawn(DOCKER, ['logs', '-f', PROXY], { stdio: 'inherit', windowsHide: true })
 }
 
+/**
+ * Behind a local tunnel (start-gate.cmd … tunnel sets GATE_TRUST_PROXY=1) the gate should believe
+ * CF-Connecting-IP — but only from the address the tunnel's connections arrive from. That address
+ * (Docker Desktop's NAT for the published port) is measured, not guessed: dsh-main gets a one-time
+ * token and calibrate() presents it over the published port. Only when the port is published on
+ * loopback: then every connection on it comes from this machine. Published to the LAN, other
+ * machines arrive through the same NAT address and could forge the header, so trust stays off.
+ * @returns {{ args: string[], warn?: string }}
+ */
+export function trustEnv(publish, env, token) {
+  if (env.GATE_TRUST_PROXY !== '1') return { args: [] }
+  if (!/^127\.0\.0\.1:\d+$/.test(publish)) {
+    return { args: [], warn: `GATE_TRUST_PROXY bị bỏ qua: gate mở ra mạng (${publish}), máy khác có thể giả IP; mọi người sẽ chung một IP trong nhật ký và khóa đăng nhập.` }
+  }
+  if (!/^[0-9a-f]{64}$/.test(token)) throw new Error('token đo không hợp lệ')
+  return { args: ['-e', 'GATE_TRUST_PROXY=1', '-e', `GATE_CALIBRATION_TOKEN=${token}`] }
+}
+
+/** Present the calibration token over the published port once the gate answers (background, ≤ 3 min). */
+async function calibrate(token) {
+  const url = `http://${PUBLISH}/gate/calibrate`
+  const deadline = Date.now() + 3 * 60_000
+  while (Date.now() < deadline) {
+    const status = await fetch(url, { method: 'POST', headers: { 'x-gate-calibration': token } }).then(r => r.status, () => 0)
+    if (status === 204) return log('gate đã nhận địa chỉ của tunnel: IP thật của người dùng được ghi đúng')
+    if (status === 403 || status === 404) return log(`không đo được địa chỉ tunnel (HTTP ${status}): gate KHÔNG tin header IP`)
+    await new Promise(r => setTimeout(r, 1000))
+  }
+  log('không đo được địa chỉ tunnel (gate chưa sẵn sàng sau 3 phút): gate KHÔNG tin header IP')
+}
+
 async function startMain(secret) {
   await docker(['rm', '-f', MAIN]).catch(() => {})
   const bridgeSubnet = (await docker(['network', 'inspect', 'bridge', '-f', '{{(index .IPAM.Config 0).Subnet}}'])).stdout.trim()
+  const calibrationToken = randomBytes(32).toString('hex')
+  const trust = trustEnv(PUBLISH, process.env, calibrationToken)
+  if (trust.warn) log(trust.warn)
   await docker(['run', '-d', '--name', MAIN, '--label', `${P}.role=main`,
     '--network', 'bridge', '-p', `${PUBLISH}:3444`, '--add-host', 'host.docker.internal:host-gateway',
     '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
     '-e', `TOOL_MANAGER_URL=http://host.docker.internal:${PORT}`, '-e', `TOOL_MANAGER_SECRET=${secret}`,
     '-e', `GATE_BIND_SUBNET=${bridgeSubnet}`, '-e', 'GATE_EGRESS_LOG=/var/egress/egress.jsonl', '-v', `${VOL_EGRESS}:/var/egress:ro`,
+    ...trust.args,
     '-v', `${VOL.storage}:/data`, '-v', `${VOL.home}:/home/dsh`, '-v', `${VOL.db}:/var/docshield`, '-v', `${VOL.gate}:/var/gate`,
     IMAGE_MAIN])
   await docker(['network', 'connect', NET_TOOLS, MAIN])
   const logs = spawn(DOCKER, ['logs', '-f', MAIN], { stdio: 'inherit', windowsHide: true })
+  if (trust.args.length) void calibrate(calibrationToken)
   return logs
 }
 

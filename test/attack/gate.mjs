@@ -15,12 +15,17 @@ const passwords = JSON.parse(process.env.ATK_PASSWORDS ?? '{}')
 const results = []
 const check = (tag, name, ok, extra = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  [${tag}] ${name}${extra ? `  (${String(extra).replace(/\s+/g, ' ').slice(0, 160)})` : ''}`) }
 
-async function login(user, password = passwords[user]) {
-  const page = await fetch(`${GATE}/gate/login`)
+/** Session cookie, or undefined. `headers` are added to both requests (e.g. what a tunnel would forward). */
+async function login(user, password = passwords[user], headers = {}) {
+  return (await loginRaw(user, password, headers)).session
+}
+async function loginRaw(user, password, headers = {}) {
+  const page = await fetch(`${GATE}/gate/login`, { headers })
   const csrf = /name="csrf" value="([^"]+)"/.exec(await page.text())[1]
   const csrfCookie = page.headers.getSetCookie().map(c => c.split(';')[0]).find(c => c.startsWith('gate_csrf='))
-  const res = await fetch(`${GATE}/gate/login`, { method: 'POST', redirect: 'manual', headers: { cookie: csrfCookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username: user, password, csrf, next: '/' }) })
-  return res.headers.getSetCookie().map(c => c.split(';')[0]).find(c => c.startsWith('gate_session='))
+  const res = await fetch(`${GATE}/gate/login`, { method: 'POST', redirect: 'manual', headers: { ...headers, cookie: csrfCookie, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username: user, password, csrf, next: '/' }) })
+  const cookies = res.headers.getSetCookie()
+  return { status: res.status, pageCookies: page.headers.getSetCookie(), session: cookies.map(c => c.split(';')[0]).find(c => c.startsWith('gate_session=')) }
 }
 
 async function api(cookie, method, args) {
@@ -116,6 +121,27 @@ try {
   check('Gate', 'alice không vào được trang quản trị', (await fetch(`${GATE}/gate/admin`, { headers: { cookie: alice }, redirect: 'manual' })).status === 403)
   const adminPage = await (await fetch(`${GATE}/gate/admin`, { headers: { cookie: admin } })).text()
   check('TC15', 'trang quản trị có bảng truy cập internet', /Truy cập internet/.test(adminPage))
+  // TC-IP: behind the tunnel (Docker mode) the gate must see each visitor's own IP, not one shared Docker address.
+  if (process.env.ATK_TRUST_PROXY === '1') {
+    const A = '203.0.113.7'
+    const B = '198.51.100.9'
+    const viaTunnel = ip => ({ 'cf-connecting-ip': ip, 'x-forwarded-proto': 'https' })
+    const secure = await loginRaw(ALICE, 'sai-mat-khau', viaTunnel(A))
+    check('TC-IP', 'qua https của tunnel: cookie có cờ Secure', secure.pageCookies.length > 0 && secure.pageCookies.every(c => /;\s*Secure/i.test(c)), secure.pageCookies.map(c => c.split(';')[0].split('=')[0]).join(','))
+    for (let i = 0; i < 6; i++) await loginRaw(ALICE, 'sai-mat-khau', viaTunnel(A))
+    const fromA = await loginRaw(ALICE, passwords[ALICE], viaTunnel(A))
+    check('TC-IP', `gõ sai nhiều lần từ ${A}: IP đó bị khóa (kể cả đúng mật khẩu)`, fromA.session === undefined && fromA.status === 429, fromA.status)
+    const fromB = await loginRaw(ALICE, passwords[ALICE], viaTunnel(B))
+    check('TC-IP', `người khác (${B}) vẫn đăng nhập được alice — không khóa chung`, fromB.session !== undefined, fromB.status)
+    const audit = (await (await fetch(`${GATE}/gate/admin`, { headers: { cookie: admin } })).text())
+    check('TC-IP', 'nhật ký quản trị ghi đúng IP thật của từng người', audit.includes(A) && audit.includes(B))
+    // Several fresh connections in a row (each login opens new ones): the trusted source address must be stable.
+    const ips = ['192.0.2.11', '192.0.2.12', '192.0.2.13']
+    for (const ip of ips) await loginRaw(BOB, passwords[BOB], viaTunnel(ip))
+    const audit2 = await (await fetch(`${GATE}/gate/admin`, { headers: { cookie: admin } })).text()
+    check('TC-IP', 'nhiều kết nối mới liên tiếp đều giữ đúng IP thật (địa chỉ nguồn tunnel ổn định)', ips.every(ip => audit2.includes(ip)))
+  }
+
   check('Gate', 'chưa đăng nhập: API bị chặn', (await api('', 'session/list', { _request: {} })).status === 401)
   check('Gate', 'cookie giả: API bị chặn', (await api('gate_session=gia.mao.hoan.toan', 'session/list', { _request: {} })).status === 401)
 } catch (error) {
