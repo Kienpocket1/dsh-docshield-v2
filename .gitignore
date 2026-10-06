@@ -11,3 +11,6 @@ container/build/
 
 # Report of the last attack-suite run (npm run attack)
 test/attack/last-run.md
+
+# Per-installation settings (start.cmd reads it; copy local.example.cmd)
+local.cmd

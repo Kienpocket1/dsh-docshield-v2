@@ -9,7 +9,7 @@
  * Markdown report. Containers are always removed at the end (even on Ctrl+C or a crash);
  * volumes are kept so the next run starts fast (--fresh rebuilds them).
  *
- * Needs the images docshield-tools:dev and docshield-dsh-main:dev (start-gate.cmd docker rebuild
+ * Needs this installation's images (TOOL_IMAGE / MAIN_IMAGE, default docshield-*:dev; start.cmd rebuild
  * builds them) and internet on the host (egress tests). Exit code 1 if any check fails.
  */
 import { execFileSync, spawn } from 'node:child_process'
@@ -21,7 +21,8 @@ import { fileURLToPath } from 'node:url'
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const argv = process.argv.slice(2)
 const opt = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : fallback }
-const P = opt('--prefix', 'atk')
+// Test volumes of this installation: atk for the original, atk<prefix> for another (never shared).
+const P = opt('--prefix', !process.env.TOOL_PREFIX || process.env.TOOL_PREFIX === 'docshield' ? 'atk' : `atk${process.env.TOOL_PREFIX}`.slice(0, 21))
 if (!/^[a-z][a-z0-9-]{1,20}$/.test(P) || ['docshield', 'e2e'].includes(P)) throw new Error(`prefix "${P}" không được phép (phải khác docshield/e2e)`)
 const FRESH = argv.includes('--fresh')
 const WITH_MODEL = argv.includes('--with-model')
@@ -125,7 +126,9 @@ process.on('unhandledRejection', e => { console.error(e); cleanup('promise lỗi
 
 // ---------- 1. preflight ----------
 if (!docker(['version', '--format', '{{.Server.Version}}'])) { console.error('Docker chưa chạy. Mở Docker Desktop (hoặc start-gate.cmd docker) rồi chạy lại.'); process.exit(2) }
-for (const image of ['docshield-tools:dev', 'docshield-dsh-main:dev']) {
+// Images of this installation (local.cmd / start.cmd set them; the defaults are the original's).
+const IMAGES = [process.env.TOOL_IMAGE ?? 'docshield-tools:dev', process.env.MAIN_IMAGE ?? 'docshield-dsh-main:dev']
+for (const image of IMAGES) {
   if (docker(['image', 'inspect', image, '--format', 'ok']) !== 'ok') { console.error(`Thiếu image ${image}: chạy start-gate.cmd docker rebuild trước.`); process.exit(2) }
 }
 const commit = (() => { try { return execFileSync('git', ['-C', ROOT, 'log', '-1', '--format=%h %s'], { encoding: 'utf8' }).trim() } catch { return '?' } })()
