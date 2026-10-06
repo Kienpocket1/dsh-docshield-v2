@@ -1,18 +1,26 @@
-# DSH-DocShield — ghi chú cho agent
+# DSH-DocShield (bản công ty) — ghi chú cho agent
 
-Người dùng viết tiếng Việt; trả lời tiếng Việt. Không push lên GitHub (chỉ commit trên máy) trừ khi người dùng yêu cầu.
+Trả lời tiếng Việt. Chỉ commit trên máy; chưa có remote — không tự gắn/push (repo GitHub public của đồ án KHÔNG phải của bản này).
+Bàn giao đầy đủ (kiến trúc, cách chạy, bẫy): `E:\Company\HANDOFF.md` — chỉ đọc khi cần.
 
-## Bố cục máy (ngoài repo)
-- `E:\Deepseek_Harness\runtime\` là môi trường chạy thật: `dsh\` (DSH 0.1.6-alpha.2 sạch từ npm), `home\` (DSH_HOME + `runtime.patch.yml`), `storage\` (**dữ liệu thật**), `gate-var\` (tài khoản, khóa cookie). DSH lưu workspace/phiên theo đường dẫn tuyệt đối: không đổi tên/di chuyển.
-- `E:\Deepseek_Harness\spike-dshpw\` là môi trường cũ (dsh-passwords, bản DSH đã bị vá) — chỉ còn để tham khảo, sẽ chuyển vào `_archive`.
-- `E:\Deepseek_Harness\deepseek-harness\` là mã nguồn DSH gốc — chỉ đọc, không sửa.
-- `E:\Deepseek_Harness\start-gate.cmd` (CRLF — sửa bằng Write/Edit rồi đổi lại CRLF; không dùng `sed -i`, vì sed của Git Bash đổi sang LF).
-- `E:\Deepseek_Harness\_backup\` bản sao lưu dữ liệu thật (có API key, mật khẩu băm) — không đưa đi đâu.
+## Kiến trúc
+- 1 DSH chung trong container `congty-dsh-main`; plugin `gate/` (đăng nhập, lọc theo người dùng, mặc định chặn: `gate/src/policy.mjs`), `docshield/` (tra cứu), `exec-router/` (công cụ của agent chạy trong container riêng từng người, vùng theo thư mục phiên: `exec-router/src/zones.mjs`).
+- `exec-router/tool-manager.mjs` chạy trên Windows, duy nhất gọi Docker. Egress proxy `container/egress-proxy.mjs` là lối ra internet duy nhất.
+- Vùng: `users/<tên>` (đọc/ghi, internet) · `admin` · `users` = admin xem dữ liệu (chỉ đọc, không mạng).
+
+## Bản này
+- Cấu hình: `local.cmd` (không vào git) — prefix `congty`, gate `127.0.0.1:3454`, manager 3470, image `congty-*`. Volume `congty-*`; KHÔNG đụng `docshield-*` (bản đồ án, `E:\Deepseek_Harness`).
+- Chạy: `start.cmd` (`tunnel`, `rebuild`). Mã nguồn DSH để build: `E:\Deepseek_Harness\deepseek-harness` (chỉ đọc).
+- Không tự bật/tắt hệ thống đang chạy của người dùng; hỏi trước. Không in khóa API/mật khẩu.
+
+## Test (chọn cái rẻ nhất đủ dùng)
+- `npm test` — unit, nhanh, không cần Docker.
+- `npm run attack` (đặt `TOOL_PREFIX=congty TOOL_IMAGE=congty-tools:dev MAIN_IMAGE=congty-dsh-main:dev`) — ~5 phút; chỉ đọc dòng tổng kết và các dòng `✗`, báo cáo ở `test/attack/last-run.md`. Mục internet cần example.com truy cập được.
 
 ## Bẫy
-- Profile `runtime\home\profiles\web\node_modules\{dsh-docshield,dsh-gate}` là junction trỏ vào `dsh-docshield\docshield` và `dsh-docshield\gate`. Đổi chỗ package thì sửa junction và `package.json` của profile.
-- Gate được plugin bật như tiến trình con của DSH: sửa code gate phải khởi động lại cả DSH.
-- Bộ lọc gate viết theo định dạng dây DSH 0.1.6-alpha.2 và **mặc định chặn**. Chức năng giao diện bị hỏng với tài khoản thường → xem log `gate: deny …` để biết endpoint nào cần thêm vào `gate/src/policy.mjs`.
-- Muốn thử end-to-end thì dựng DSH_HOME/storage/gate-var riêng (patch đổi `storageRoot`, `varDir`, cổng gate), không thử trên `runtime\`.
-- Không tự bật/tắt DSH của người dùng; hỏi trước.
-- Repo GitHub là public: không đưa báo cáo LaTeX (`E:\Deepseek_Harness\bao-cao\`) hay dữ liệu thật vào.
+- Docker Desktop lỗi socket: `exec-router/ensure-docker.ps1` tự sửa (tắt tiến trình → đổi tên `%LOCALAPPDATA%\Docker\run`, `docker-secrets-engine` → mở; làm 2 lần).
+- Git Bash: `export MSYS_NO_PATHCONV=1` trước `docker exec … /opt/...`; heredoc làm mất `\` → dùng Edit/Write.
+- `.cmd` phải CRLF; PowerShell 5.1 không có `&&`, `powershell -File` bỏ tham số rỗng.
+- Sửa gate/docshield/exec-router phải `start.cmd rebuild` (code nằm trong image).
+- Gate mặc định chặn: chức năng giao diện hỏng với tài khoản thường → xem log `gate: deny …`, thêm endpoint vào `gate/src/policy.mjs`.
+- Đọc log phiên chat DSH: `E:\Company\tools-local\read-sessions.mjs` (chép vào container `/tmp`, chạy bằng node).
