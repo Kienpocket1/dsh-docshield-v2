@@ -24,3 +24,6 @@ Bàn giao đầy đủ (kiến trúc, cách chạy, bẫy): `E:\Company\HANDOFF.
 - Sửa gate/docshield/exec-router phải `start.cmd rebuild` (code nằm trong image).
 - Gate mặc định chặn: chức năng giao diện hỏng với tài khoản thường → xem log `gate: deny …`, thêm endpoint vào `gate/src/policy.mjs`.
 - Đọc log phiên chat DSH: `E:\Company\tools-local\read-sessions.mjs` (chép vào container `/tmp`, chạy bằng node).
+
+## Giữ file này đúng
+Đổi kiến trúc, cách chạy/test, cổng, cấu hình hoặc gặp bẫy mới → cập nhật file này trong cùng lượt; xóa dòng sai, giữ < ~3 KB.
