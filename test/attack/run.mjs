@@ -279,7 +279,9 @@ async function runUnits() {
   const unit = (name, cmd, args, cwd, tag = 'Unit') => new Promise(resolve => {
     say(`▶ unit: ${name}`)
     let out = ''
-    const child = spawn(cmd, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    // Unit tests expect the defaults: drop this installation's settings (prefix, images, ports…).
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !/^(TOOL_|GATE_|MAIN_IMAGE$)/.test(k)))
+    const child = spawn(cmd, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout.on('data', d => { out += d })
     child.stderr.on('data', d => { out += d })
     child.on('close', code => {

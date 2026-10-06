@@ -56,7 +56,12 @@ start "Cloudflare Tunnel %TOOL_PREFIX% - link nam trong cua so nay" "%CLOUDFLARE
 :tunnel_done
 
 echo Kiem tra Docker, image va du lieu cua ban %TOOL_PREFIX%...
-powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO%\exec-router\ensure-docker.ps1" %REBUILD% -Prefix "%TOOL_PREFIX%" -ToolImage "%TOOL_IMAGE%" -MainImage "%MAIN_IMAGE%" -RuntimeDir "%RUNTIME_DIR%" -DshSource "%DSH_SOURCE%" -ModelFrom "%MODEL_FROM%"
+rem powershell -File drops empty arguments: pass the optional ones only when set.
+set "PSARGS=-Prefix "%TOOL_PREFIX%" -ToolImage "%TOOL_IMAGE%" -MainImage "%MAIN_IMAGE%""
+if defined RUNTIME_DIR set "PSARGS=%PSARGS% -RuntimeDir "%RUNTIME_DIR%""
+if defined DSH_SOURCE set "PSARGS=%PSARGS% -DshSource "%DSH_SOURCE%""
+if defined MODEL_FROM set "PSARGS=%PSARGS% -ModelFrom "%MODEL_FROM%""
+powershell -NoProfile -ExecutionPolicy Bypass -File "%REPO%\exec-router\ensure-docker.ps1" %REBUILD% %PSARGS%
 if errorlevel 1 goto :end
 
 echo Dang khoi dong ban %TOOL_PREFIX%:
