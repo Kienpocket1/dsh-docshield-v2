@@ -17,7 +17,8 @@
  * A zone over its disk quota is blocked until tool-manager restarts; after a
  * (re)start every zone gets 10 minutes of grace to delete files.
  * Environment: TOOL_PREFIX (default "docshield"; e2e uses "e2e"), GATE_PUBLISH (127.0.0.1:3444),
- *   TOOL_MANAGER_PORT (3460), DOCKER_BIN, TOOL_QUOTA_MB (1024); for tests only:
+ *   TOOL_MANAGER_PORT (3460), DOCKER_BIN, TOOL_QUOTA_MB (1024), TOOL_IMAGE / MAIN_IMAGE / PROXY_IMAGE
+ *   (docshield-tools / docshield-dsh-main / docshield-egress-proxy, tag dev); for tests only:
  *   TOOL_QUOTA_GRACE_S (600) and TOOL_QUOTA_SWEEP_S (60).
  */
 import { execFile, spawn } from 'node:child_process'
@@ -38,6 +39,7 @@ const QUOTA_GRACE_MS = Number(process.env.TOOL_QUOTA_GRACE_S ?? 600) * 1000
 const QUOTA_SWEEP_MS = Math.max(1, Number(process.env.TOOL_QUOTA_SWEEP_S ?? 60)) * 1000
 const IMAGE_TOOLS = process.env.TOOL_IMAGE ?? 'docshield-tools:dev'
 const IMAGE_MAIN = process.env.MAIN_IMAGE ?? 'docshield-dsh-main:dev'
+const IMAGE_PROXY = process.env.PROXY_IMAGE ?? 'docshield-egress-proxy:dev'
 const NET_TOOLS = `${P}-tools`
 const VOL = { storage: `${P}-storage`, home: `${P}-home`, db: `${P}-db`, gate: `${P}-gate` }
 const MAIN = `${P}-dsh-main`
@@ -173,7 +175,7 @@ async function startProxy() {
     '--read-only', '--user', '1000:1000', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
     '--init', '--memory', '128m', '--memory-swap', '128m', '--cpus', '0.5', '--pids-limit', '64',
     '-e', `EGRESS_SECRET=${egressSecret}`, '-e', 'EGRESS_LOG=/var/egress/egress.jsonl', '-v', `${VOL_EGRESS}:/var/egress`,
-    '--entrypoint', 'node', IMAGE_TOOLS, '/opt/tool/egress-proxy.mjs'])
+    IMAGE_PROXY])
   await docker(['network', 'connect', '--alias', 'egress-proxy', NET_TOOLS, PROXY])
   return spawn(DOCKER, ['logs', '-f', PROXY], { stdio: 'inherit', windowsHide: true })
 }

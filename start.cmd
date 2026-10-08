@@ -18,6 +18,7 @@ if not defined GATE_PORT goto :badcfg
 if not defined TOOL_MANAGER_PORT goto :badcfg
 if not defined TOOL_IMAGE goto :badcfg
 if not defined MAIN_IMAGE goto :badcfg
+if not defined PROXY_IMAGE goto :badcfg
 set "NODE_EXE=C:\Program Files\nodejs\node.exe"
 if not exist "%NODE_EXE%" set "NODE_EXE=node"
 
@@ -57,7 +58,7 @@ start "Cloudflare Tunnel %TOOL_PREFIX% - link nam trong cua so nay" "%CLOUDFLARE
 
 echo Kiem tra Docker, image va du lieu cua ban %TOOL_PREFIX%...
 rem powershell -File drops empty arguments: pass the optional ones only when set.
-set "PSARGS=-Prefix "%TOOL_PREFIX%" -ToolImage "%TOOL_IMAGE%" -MainImage "%MAIN_IMAGE%""
+set "PSARGS=-Prefix "%TOOL_PREFIX%" -ToolImage "%TOOL_IMAGE%" -MainImage "%MAIN_IMAGE%" -ProxyImage "%PROXY_IMAGE%""
 if defined RUNTIME_DIR set "PSARGS=%PSARGS% -RuntimeDir "%RUNTIME_DIR%""
 if defined DSH_SOURCE set "PSARGS=%PSARGS% -DshSource "%DSH_SOURCE%""
 if defined MODEL_FROM set "PSARGS=%PSARGS% -ModelFrom "%MODEL_FROM%""
@@ -74,7 +75,7 @@ cd /d "%REPO%"
 goto :end
 
 :badcfg
-echo [LOI] local.cmd thieu bien: can TOOL_PREFIX, GATE_PORT, TOOL_MANAGER_PORT, TOOL_IMAGE, MAIN_IMAGE.
+echo [LOI] local.cmd thieu bien: can TOOL_PREFIX, GATE_PORT, TOOL_MANAGER_PORT, TOOL_IMAGE, MAIN_IMAGE, PROXY_IMAGE.
 
 :end
 echo.

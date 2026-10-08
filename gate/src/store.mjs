@@ -151,10 +151,14 @@ export class GateStore {
     this.db.prepare('UPDATE users SET last_login_at = ? WHERE username = ?').run(new Date().toISOString(), username)
   }
 
-  /** Remaining lock in ms for this username+IP, or for the whole IP; 0 when free. */
-  lockRemaining(username, ip, now = Date.now()) {
+  /**
+   * Remaining lock in ms for this username+IP, or for the whole IP; 0 when free.
+   * @param {boolean} [ipWide] false when `ip` is shared by every client (Docker NAT): no IP-wide lock then
+   */
+  lockRemaining(username, ip, now = Date.now(), ipWide = true) {
     const row = this.db.prepare('SELECT locked_until FROM login_failures WHERE key = ?').get(`${username}|${ip}`)
     const userLock = row ? Math.max(0, row.locked_until - now) : 0
+    if (!ipWide) return userLock
     const recent = this.db.prepare('SELECT COUNT(*) AS n FROM ip_failures WHERE ip = ? AND at > ?').get(ip, now - IP_WINDOW_MS).n
     const ipLock = recent >= IP_MAX_FAILS ? IP_WINDOW_MS : 0
     return Math.max(userLock, ipLock)

@@ -9,7 +9,7 @@
  * real path must lie inside the real storage root. Reads go through the
  * verified handle only. Directory listings skip symlinks and junctions.
  */
-import { lstat, mkdir, open, readdir, realpath, stat, unlink, chmod, type FileHandle } from 'node:fs/promises'
+import { lstat, mkdir, open, readdir, readlink, realpath, stat, unlink, chmod, type FileHandle } from 'node:fs/promises'
 import path from 'node:path'
 
 export class UnsafePathError extends Error {
@@ -37,10 +37,22 @@ export async function openVerified(root: string, file: string): Promise<{ handle
   try {
     const opened = await handle.stat({ bigint: true })
     if (!opened.isFile()) throw new UnsafePathError('Không phải tệp thông thường.')
-    const [realRoot, realFile] = await Promise.all([realpath(root), realpath(file)])
+    const realRoot = await realpath(root)
+    // Linux (production): the kernel names the file this handle really is; no path is walked again.
+    const actual = await readlink(`/proc/self/fd/${handle.fd}`).catch(() => undefined)
+    if (actual !== undefined) {
+      if (!isWithin(realRoot, actual)) throw new UnsafePathError('Tệp trỏ ra ngoài vùng lưu trữ.')
+      return { handle, size: Number(opened.size) }
+    }
+    // Elsewhere: realpath and stat walk the path again, so a folder flipping between real and
+    // link can line both up with the opened file. Require the real path to hold still around
+    // the stat. ponytail: narrows the race on Windows (dev only) without closing it.
+    const realFile = await realpath(file)
     if (!isWithin(realRoot, realFile)) throw new UnsafePathError('Tệp trỏ ra ngoài vùng lưu trữ.')
     const named = await stat(realFile, { bigint: true })
-    if (named.dev !== opened.dev || named.ino !== opened.ino) throw new UnsafePathError('Tệp bị thay đổi trong lúc mở.')
+    if (named.dev !== opened.dev || named.ino !== opened.ino || (await realpath(file)) !== realFile) {
+      throw new UnsafePathError('Tệp bị thay đổi trong lúc mở.')
+    }
     return { handle, size: Number(opened.size) }
   } catch (error) {
     await handle.close()

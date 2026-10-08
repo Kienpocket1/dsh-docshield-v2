@@ -77,6 +77,8 @@ describe('checkCall', () => {
     assert.equal(checkCall('session/create', { request: { cwd: BOB } }, access()).allow, false)
     assert.equal(checkCall('session/create', { request: {} }, access()).allow, false, 'no cwd would mean the Host process folder')
     assert.equal(checkCall('session/create', { request: { workspaceId: 'w-alice', sessionId: 's-bob' } }, access()).allow, false, 'cannot adopt another user’s session')
+    const linked = { ...access(), realInRoot: p => !p.includes('to-bob') }
+    assert.equal(checkCall('session/create', { request: { cwd: path.join(ALICE, 'to-bob') } }, linked).allow, false, 'a link out of the folder')
   })
   it('keeps the directory picker inside the user folder', () => {
     const d = checkCall('directoryPicker/list', { request: {} }, access())

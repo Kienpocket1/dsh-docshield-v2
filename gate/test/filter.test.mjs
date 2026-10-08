@@ -7,7 +7,7 @@ import net from 'node:net'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { createFilter } from '../src/filter.mjs'
+import { createFilter, realInside } from '../src/filter.mjs'
 import { SessionIndex, callUpstream } from '../src/sessions.mjs'
 import { Upstream } from '../src/upstream.mjs'
 import { OP, createDecoder, encodeFrame } from '../src/ws.mjs'
@@ -213,5 +213,19 @@ describe('filter (WebSocket mux)', () => {
   it('refuses answering an approval that was not delivered to the user', async () => {
     const res = await api('alice', '$events/result', { clientId: 'c1', eventId: 'e-bob', outcome: { kind: 'result', value: 'allowed-once' } })
     assert.equal(res.body.result.ok, false)
+  })
+})
+
+describe('realInside (session folder through a link)', () => {
+  it('follows links in the existing part of the path', () => {
+    mkdirSync(path.join(ALICE, 'docs'), { recursive: true })
+    mkdirSync(BOB, { recursive: true })
+    const link = path.join(ALICE, 'to-bob')
+    symlinkSync(BOB, link, process.platform === 'win32' ? 'junction' : 'dir')
+    assert.equal(realInside(ALICE, path.join(ALICE, 'docs')), true)
+    assert.equal(realInside(ALICE, path.join(ALICE, 'new', 'folder')), true, 'not created yet: judged by its existing parent')
+    assert.equal(realInside(ALICE, link), false)
+    assert.equal(realInside(ALICE, path.join(link, 'not-yet')), false)
+    rmSync(link)
   })
 })

@@ -64,6 +64,40 @@ describe('trusted local proxy', () => {
   })
 })
 
+describe('cross-site requests', () => {
+  it('refuses POST and WebSocket upgrades whose Origin is another site', async () => {
+    const g = await startGate(false, 'origin')
+    const host = `127.0.0.1:${g.port}`
+    assert.equal((await request(g.port, 'POST', '/gate/logout', { origin: 'https://evil.example' })).status, 403)
+    assert.equal((await request(g.port, 'POST', '/api/session/prompt', { origin: 'null' })).status, 403)
+    assert.equal((await request(g.port, 'POST', '/gate/logout', { origin: `http://${host}` })).status, 303)
+    assert.equal((await request(g.port, 'POST', '/gate/logout')).status, 303)
+    const upgrade = await new Promise(resolve => {
+      const req = http.request({ host: '127.0.0.1', port: g.port, path: '/api/remote.mux', headers: { connection: 'Upgrade', upgrade: 'websocket', origin: 'http://localhost:9999' } })
+      req.on('response', res => resolve(res.statusCode))
+      req.on('upgrade', () => resolve(101))
+      req.end()
+    })
+    assert.equal(upgrade, 403)
+    g.gate.close(); g.store.close()
+  })
+})
+
+describe('shared NAT address (Docker mode)', () => {
+  it('a flood of failures from the shared address does not lock other accounts out', async () => {
+    const g = await startGate(false, 'shared', { sharedDirectAddr: true })
+    for (let i = 0; i < 60; i++) g.store.recordFailure(`spray${i}`, '127.0.0.1')
+    const page = await request(g.port, 'GET', '/gate/login')
+    const csrfCookie = page.headers['set-cookie'].map(c => c.split(';')[0]).find(c => c.startsWith('gate_csrf='))
+    const csrf = /name="csrf" value="([^"]+)"/.exec(page.body)[1]
+    const res = await request(g.port, 'POST', '/gate/login', { cookie: csrfCookie }, `username=alice&password=alice-password&csrf=${csrf}&next=/`)
+    assert.equal(res.status, 303)
+    // Without the flag (one real client per address) the same flood locks the address.
+    assert.ok(g.store.lockRemaining('alice', '127.0.0.1') > 0)
+    g.gate.close(); g.store.close()
+  })
+})
+
 describe('trusted peers (Docker + tunnel)', () => {
   it('trusts loopback and exactly the listed addresses, IPv4-mapped or not', () => {
     assert.ok(isTrustedPeer('127.0.0.1'))

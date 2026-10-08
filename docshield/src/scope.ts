@@ -49,8 +49,14 @@ export function resolveScope(
   if (cwd === undefined || cwd === '') return OUTSIDE
   const p = (options.platform ?? process.platform) === 'win32' ? path.win32 : path.posix
   const real = options.realpath ?? defaultRealpath
-  const root = p.resolve(real(storageRoot))
-  const target = p.resolve(real(cwd))
+  // The gate and the tool router judge a session by its cwd as written; a link inside it may
+  // point anywhere (another user's folder, admin). Both readings must agree, or no scope at all.
+  const written = classify(p, p.resolve(storageRoot), p.resolve(cwd))
+  const resolved = classify(p, p.resolve(real(storageRoot)), p.resolve(real(cwd)))
+  return sameResolution(written, resolved) ? written : INVALID
+}
+
+function classify(p: path.PlatformPath, root: string, target: string): ScopeResolution {
   // path.win32.relative compares case-insensitively, matching NTFS semantics.
   const rel = p.relative(root, target)
   if (rel === '') return INVALID
@@ -64,6 +70,13 @@ export function resolveScope(
     return { inside: true, scope: { role: 'user', userId: owner } }
   }
   return INVALID
+}
+
+function sameResolution(a: ScopeResolution, b: ScopeResolution): boolean {
+  if (a.inside !== b.inside) return false
+  if (a.scope === null || b.scope === null) return a.scope === b.scope
+  if (a.scope.role !== b.scope.role) return false
+  return a.scope.role === 'admin' || a.scope.userId.toLowerCase() === (b.scope as { userId: string }).userId.toLowerCase()
 }
 
 /** Workspace folder of a scope: `users/<u>` or `admin`. */

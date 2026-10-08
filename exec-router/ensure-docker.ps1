@@ -1,7 +1,7 @@
-# Make Docker Desktop usable, build this instance's two images if missing, and prepare its Docker
+# Make Docker Desktop usable, build this instance's three images if missing, and prepare its Docker
 # volumes on first use: migrate a Windows runtime (-RuntimeDir) or start a clean instance
 # (container/init-instance.mjs). Used by start.cmd (settings in local.cmd).
-#   powershell -File exec-router\ensure-docker.ps1 [-Rebuild] [-Prefix docshield] [-ToolImage ...] [-MainImage ...]
+#   powershell -File exec-router\ensure-docker.ps1 [-Rebuild] [-Prefix docshield] [-ToolImage ...] [-MainImage ...] [-ProxyImage ...]
 #                                                  [-RuntimeDir E:\...\runtime] [-DshSource E:\...\deepseek-harness]
 #                                                  [-ModelFrom docshield-storage]
 param(
@@ -9,6 +9,7 @@ param(
   [string]$Prefix = 'docshield',
   [string]$ToolImage = 'docshield-tools:dev',
   [string]$MainImage = 'docshield-dsh-main:dev',
+  [string]$ProxyImage = 'docshield-egress-proxy:dev',
   # Windows runtime to copy on first use; empty = start a clean instance instead.
   [string]$RuntimeDir = '',
   # DeepSeek Harness source checkout (read only; container/prepare.mjs takes the SSH packages from it).
@@ -57,13 +58,17 @@ Write-Host "  Docker san sang (engine $(Engine))."
 
 Push-Location $repo
 try {
-  foreach ($img in @(@{ tag = $ToolImage; file = 'container/tools.Dockerfile' }, @{ tag = $MainImage; file = 'container/dsh-main.Dockerfile' })) {
+  # The proxy image is node + one file: no docshield build or prepare step.
+  foreach ($img in @(@{ tag = $ToolImage; file = 'container/tools.Dockerfile'; prep = $true }, @{ tag = $MainImage; file = 'container/dsh-main.Dockerfile'; prep = $true },
+                     @{ tag = $ProxyImage; file = 'container/egress-proxy.Dockerfile'; prep = $false })) {
     & $docker image inspect $img.tag 2>$null | Out-Null
     if ($Rebuild -or $LASTEXITCODE -ne 0) {
       Write-Host "  Build $($img.tag) (lan dau mat vai phut)..."
-      npm --prefix docshield run build; if ($LASTEXITCODE -ne 0) { Write-Host '[LOI] build docshield that bai.'; exit 1 }
-      if ($DshSource) { node container/prepare.mjs $DshSource } else { node container/prepare.mjs }
-      if ($LASTEXITCODE -ne 0) { Write-Host '[LOI] prepare that bai (can ma nguon deepseek-harness, xem DSH_SOURCE trong local.cmd).'; exit 1 }
+      if ($img.prep) {
+        npm --prefix docshield run build; if ($LASTEXITCODE -ne 0) { Write-Host '[LOI] build docshield that bai.'; exit 1 }
+        if ($DshSource) { node container/prepare.mjs $DshSource } else { node container/prepare.mjs }
+        if ($LASTEXITCODE -ne 0) { Write-Host '[LOI] prepare that bai (can ma nguon deepseek-harness, xem DSH_SOURCE trong local.cmd).'; exit 1 }
+      }
       & $docker build -f $img.file -t $img.tag .; if ($LASTEXITCODE -ne 0) { Write-Host "[LOI] docker build $($img.tag) that bai."; exit 1 }
     }
   }

@@ -21,6 +21,8 @@ export function loadConfig(env = process.env) {
     storageRoot: env.DOCSHIELD_STORAGE_ROOT,
     // Docker mode: the egress proxy's JSONL log (read-only mount), shown on /gate/admin.
     egressLog: env.GATE_EGRESS_LOG,
+    // Docker mode (gate on the bridge network): direct clients all arrive from the NAT address.
+    sharedDirectAddr: Boolean(env.GATE_BIND_SUBNET),
   }
 }
 

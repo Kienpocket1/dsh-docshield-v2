@@ -8,6 +8,7 @@ set "GATE_PORT=3454"
 set "TOOL_MANAGER_PORT=3470"
 set "TOOL_IMAGE=congty-tools:dev"
 set "MAIN_IMAGE=congty-dsh-main:dev"
+set "PROXY_IMAGE=congty-egress-proxy:dev"
 rem Lan dau: de trong = tao ban sach; hoac duong dan runtime Windows cu de chep du lieu sang.
 set "RUNTIME_DIR="
 rem Ma nguon DeepSeek Harness (chi doc) de build image.

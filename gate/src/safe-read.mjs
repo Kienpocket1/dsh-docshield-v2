@@ -6,7 +6,7 @@
  * this real path lies inside the user's real folder. Bytes come from the
  * verified handle only.
  */
-import { open, realpath, stat } from 'node:fs/promises'
+import { open, readlink, realpath, stat } from 'node:fs/promises'
 import path from 'node:path'
 
 const MAX_BYTES = 50 * 1024 * 1024
@@ -42,9 +42,19 @@ export async function serveVerified(root, file, req, res) {
   }
   try {
     const opened = await handle.stat({ bigint: true })
-    const [realRoot, realFile] = await Promise.all([realpath(root), realpath(file)])
-    const named = await stat(realFile, { bigint: true })
-    if (!opened.isFile() || !within(realRoot, realFile) || named.dev !== opened.dev || named.ino !== opened.ino || opened.size > BigInt(MAX_BYTES)) {
+    const realRoot = await realpath(root)
+    // Linux (production): the kernel names the file this handle really is; no path is walked again.
+    const actual = await readlink(`/proc/self/fd/${handle.fd}`).catch(() => undefined)
+    let realFile = actual
+    let safe = actual !== undefined && within(realRoot, actual)
+    if (actual === undefined) {
+      // Elsewhere: realpath/stat walk the path again; require it to hold still around the stat.
+      // ponytail: narrows the folder-flip race on Windows (dev only) without closing it.
+      realFile = await realpath(file)
+      const named = await stat(realFile, { bigint: true })
+      safe = within(realRoot, realFile) && named.dev === opened.dev && named.ino === opened.ino && (await realpath(file)) === realFile
+    }
+    if (!opened.isFile() || !safe || opened.size > BigInt(MAX_BYTES)) {
       await handle.close()
       res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' })
       res.end('Gate: không có quyền')

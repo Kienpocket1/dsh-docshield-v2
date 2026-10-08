@@ -88,6 +88,9 @@ describe('proxy headers', () => {
     assert.equal(safeNext('https://evil.com'), '/')
     assert.equal(safeNext('/\\evil.com'), '/')
     assert.equal(safeNext('/gate/logout'), '/')
+    assert.equal(safeNext('/\t/evil.com'), '/')
+    assert.equal(safeNext('/\n/evil.com'), '/')
+    assert.equal(safeNext('/a\\b'), '/')
   })
 })
 

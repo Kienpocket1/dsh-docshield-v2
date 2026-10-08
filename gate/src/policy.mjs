@@ -129,6 +129,8 @@ function checkCreate(args, access) {
   if (!request || typeof request !== 'object') return { allow: false, reason: 'yêu cầu không hợp lệ' }
   const cwd = typeof request.cwd === 'string' ? request.cwd : access.workspacePath(request.workspaceId)
   if (cwd === undefined || !access.inRoot(cwd)) return { allow: false, reason: 'chỉ được tạo phiên trong thư mục của bạn' }
+  // A link inside the folder may lead elsewhere; DocShield also refuses such a session's tools.
+  if (access.realInRoot && !access.realInRoot(cwd)) return { allow: false, reason: 'thư mục phiên là liên kết ra ngoài thư mục của bạn' }
   // A client-chosen id may name an existing session elsewhere (DSH would adopt it or leak its cwd).
   if (request.sessionId !== undefined && !access.owns(request.sessionId) && access.known?.(request.sessionId)) {
     return { allow: false, reason: 'mã phiên không hợp lệ' }

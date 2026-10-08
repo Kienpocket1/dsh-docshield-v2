@@ -38,10 +38,25 @@ describe('resolveScope (win32)', () => {
     expect(resolveScope(undefined, ROOT, win)).toEqual({ inside: false, scope: null })
   })
 
-  it('resolves symlinks/junctions before matching', () => {
+  it('denies a link from outside into a user folder (inside, no scope)', () => {
     const realpath = (p: string) => p.replace('\\link-to-bob', '\\storage\\users\\bob')
-    expect(resolveScope('E:\\Deepseek_Harness\\spike-dshpw\\link-to-bob', ROOT, { platform: 'win32', realpath }).scope)
-      .toEqual({ role: 'user', userId: 'bob' })
+    expect(resolveScope('E:\\Deepseek_Harness\\spike-dshpw\\link-to-bob', ROOT, { platform: 'win32', realpath }))
+      .toEqual({ inside: true, scope: null })
+  })
+})
+
+describe('resolveScope (links inside a user folder)', () => {
+  const R = '/data'
+  const linked = (target: string) => ({ platform: 'linux' as const, realpath: (p: string) => p.replace('/data/users/alice/lt', target) })
+
+  it('denies a link to another user or to admin', () => {
+    expect(resolveScope('/data/users/alice/lt', R, linked('/data/users/bob'))).toEqual({ inside: true, scope: null })
+    expect(resolveScope('/data/users/alice/lt/docs', R, linked('/data/admin'))).toEqual({ inside: true, scope: null })
+    expect(resolveScope('/data/users/alice/lt', R, linked('/etc'))).toEqual({ inside: true, scope: null })
+  })
+
+  it('keeps the scope when the link stays inside the same user folder', () => {
+    expect(resolveScope('/data/users/alice/lt', R, linked('/data/users/alice/docs')).scope).toEqual({ role: 'user', userId: 'alice' })
   })
 })
 

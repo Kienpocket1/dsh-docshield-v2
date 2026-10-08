@@ -4,7 +4,7 @@
  * goes through the rules in policy.mjs, with session ownership from
  * sessions.mjs. Anything unrecognized is refused.
  */
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, realpathSync } from 'node:fs'
 import http from 'node:http'
 import net from 'node:net'
 import path from 'node:path'
@@ -59,6 +59,7 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
     return {
       root,
       inRoot,
+      realInRoot: p => realInside(root, p),
       owns: id => inRoot(sessions.cwdOf(id)),
       known: id => sessions.cwdOf(id) !== undefined,
       workspacePath: id => (typeof id === 'string' ? workspaces.get(id) : undefined),
@@ -295,6 +296,20 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
   }
 
   return { handleHttp, handleUpgrade, accessFor, ensureWorkspace, disconnect, workspaces }
+}
+
+/** `p` with links resolved (its nearest existing ancestor; the rest does not exist yet) lies inside `root`'s real path. */
+export function realInside(root, p) {
+  const real = q => { try { return realpathSync(q) } catch { return undefined } }
+  const realRoot = real(root) ?? path.resolve(root)
+  let cur = path.resolve(p)
+  for (;;) {
+    const r = real(cur)
+    if (r !== undefined) return isInside(realRoot, r)
+    const parent = path.dirname(cur)
+    if (parent === cur) return false
+    cur = parent
+  }
 }
 
 function rpcReply(res, rpcId, result) {

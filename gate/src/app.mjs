@@ -45,23 +45,44 @@ const PAGE_HEADERS = {
  *   records the caller's address as a trusted peer (the tool-manager calls it over the same path
  *   cloudflared uses); zeroed and gone after the first success
  * @param {string} [deps.egressLog] egress proxy JSONL log (docker mode), shown to admins
+ * @param {boolean} [deps.sharedDirectAddr] Docker mode: direct connections all arrive from the NAT
+ *   address, so only tunnel-forwarded addresses count toward the IP-wide lockout
  * @param {(msg: string) => void} [deps.log]
  */
-export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, trustedPeers = [], calibrationToken, egressLog, log = () => {} }) {
+export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, trustedPeers = [], calibrationToken, egressLog, sharedDirectAddr = false, log = () => {} }) {
   const setupOpen = () => setupKey !== undefined && store.countUsers() === 0
   const sessionValue = req => parseCookies(req.headers.cookie)[SESSION_COOKIE]
   const currentUser = req => verifySession(secret, sessionValue(req), name => store.getUser(name))
   const peers = trustedPeers.map(normalizeAddr).filter(Boolean)
   let calibration = trustProxy && calibrationToken?.length ? calibrationToken : undefined
   const fromTrustedProxy = req => trustProxy && isTrustedPeer(req.socket.remoteAddress, peers)
-  const ipOf = req => {
-    if (fromTrustedProxy(req)) {
-      const cf = req.headers['cf-connecting-ip']
-      if (typeof cf === 'string' && cf.trim() !== '') return cf.trim()
-      const xff = req.headers['x-forwarded-for']
-      if (typeof xff === 'string' && xff.trim() !== '') return xff.split(',')[0].trim()
-    }
-    return req.socket.remoteAddress ?? 'unknown'
+  /** Client address from a trusted tunnel's header, or undefined. */
+  const forwardedIp = req => {
+    if (!fromTrustedProxy(req)) return undefined
+    const cf = req.headers['cf-connecting-ip']
+    if (typeof cf === 'string' && cf.trim() !== '') return cf.trim()
+    const xff = req.headers['x-forwarded-for']
+    if (typeof xff === 'string' && xff.trim() !== '') return xff.split(',')[0].trim()
+    return undefined
+  }
+  const ipOf = req => forwardedIp(req) ?? req.socket.remoteAddress ?? 'unknown'
+  /**
+   * Whether the address tells clients apart. Docker mode: every direct connection arrives from
+   * the same NAT address, so an IP-wide lockout there would lock everyone out at once.
+   */
+  const ipDistinct = req => !sharedDirectAddr || forwardedIp(req) !== undefined
+  /**
+   * A browser request from another site (Origin ≠ the host it was sent to). The proxy rewrites
+   * Origin for DSH's own fence, so the gate must check it first. No Origin: not a browser
+   * cross-site request (CLI, same-origin GET), allowed.
+   */
+  const crossSite = req => {
+    const origin = req.headers.origin
+    if (origin === undefined) return false
+    let host
+    try { host = new URL(origin).host.toLowerCase() } catch { return true }
+    if (host === String(req.headers.host ?? '').toLowerCase()) return false
+    return !(fromTrustedProxy(req) && host === String(req.headers['x-forwarded-host'] ?? '').toLowerCase())
   }
   const viaHttps = req => fromTrustedProxy(req) && req.headers['x-forwarded-proto'] === 'https'
   const tokenFor = req => formToken(secret, sessionValue(req))
@@ -89,6 +110,10 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
   async function handle(req, res) {
     const url = new URL(req.url ?? '/', 'http://gate.local')
     if (url.pathname === '/gate/calibrate') return calibrate(req, res)
+    if (req.method !== 'GET' && req.method !== 'HEAD' && crossSite(req)) {
+      log(`deny cross-site ${req.method} ${url.pathname} (Origin ${req.headers.origin})`)
+      return json(res, 403, { error: 'cross-site request' })
+    }
     const route = ROUTES[url.pathname]
     if (route !== undefined) {
       if (url.pathname === '/gate/setup' && !setupOpen()) return redirect(res, '/gate/login')
@@ -118,6 +143,11 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
   }
 
   server.on('upgrade', (req, socket, head) => {
+    if (crossSite(req)) {
+      log(`deny cross-site upgrade ${req.url} (Origin ${req.headers.origin})`)
+      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n')
+      return
+    }
     const user = currentUser(req)
     if (user === undefined || user.must_change_password) {
       socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
@@ -163,7 +193,7 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
     const password = String(form.get('password') ?? '')
     const ip = ipOf(req)
     if (!csrfOk(req, form)) return loginPage(req, res, next, { error: 'Phiên đăng nhập đã hết hạn, hãy thử lại.', username, status: 400 })
-    const locked = store.lockRemaining(username, ip)
+    const locked = store.lockRemaining(username, ip, undefined, ipDistinct(req))
     if (locked > 0) {
       store.audit('login_locked', { username, ip })
       return loginPage(req, res, next, { error: `Đăng nhập sai quá nhiều lần. Thử lại sau ${Math.ceil(locked / 60_000)} phút.`, username, status: 429 })
@@ -207,7 +237,7 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
     const password = String(form.get('password') ?? '')
     const again = { username }
     if (!csrfOk(req, form)) return setupPage(req, res, null, { ...again, error: 'Phiên thiết lập đã hết hạn, hãy thử lại.', status: 400 })
-    const locked = store.lockRemaining('#setup', ip)
+    const locked = store.lockRemaining('#setup', ip, undefined, ipDistinct(req))
     if (locked > 0) return setupPage(req, res, null, { ...again, error: `Nhập sai mã quá nhiều lần. Thử lại sau ${Math.ceil(locked / 60_000)} phút.`, status: 429 })
     if (!sameSecret(String(form.get('setup_key') ?? '').trim(), setupKey)) {
       store.recordFailure('#setup', ip)
@@ -426,10 +456,15 @@ function methodNotAllowed(res) {
   res.end('Method not allowed')
 }
 
-/** Only same-site relative paths; anything else falls back to "/". */
+/**
+ * Only same-site relative paths; anything else falls back to "/". Control characters and
+ * backslashes are refused outright: browsers drop TAB/CR/LF and read "\" as "/", so
+ * "/\t/evil.com" would land on //evil.com.
+ */
 export function safeNext(value) {
   const v = typeof value === 'string' ? value : ''
-  return v.startsWith('/') && !v.startsWith('//') && !v.startsWith('/\\') && !v.startsWith('/gate/') ? v : '/'
+  if (/[\x00-\x1f\x7f\\]/.test(v)) return '/'
+  return v.startsWith('/') && !v.startsWith('//') && !v.startsWith('/gate/') ? v : '/'
 }
 
 /** Readable one-time password: 12 characters without look-alikes (0/O, 1/l/I). */
