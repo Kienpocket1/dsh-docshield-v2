@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * egress-proxy — the only way out to the internet for tool containers (their
- * network is `--internal`). Plain Node, no dependencies; runs from the tools
- * image as uid 1000 on `<P>-egress` + `<P>-tools`.
+ * network is `--internal`). Plain Node, no dependencies; runs from its own
+ * image (egress-proxy.Dockerfile) as uid 1000 on `<P>-egress` + `<P>-tools`.
  *
  * - Who: `Proxy-Authorization: Basic <name>:<token>`, name `user.<u>` or `admin`,
  *   token = HMAC-SHA256(EGRESS_SECRET, zone). Stateless; `admin-review` never.
@@ -12,6 +12,7 @@
  * - How much (TC15): per zone, connections/minute, concurrent connections and
  *   bytes up/down per minute, counted on the raw TCP stream (inside a CONNECT
  *   tunnel that is TLS bytes); over the upload budget both sockets are cut.
+ *   Unlimited by default (DEFAULT_LIMITS); only `limits` passed in set a cap.
  * - Log: one JSON line per connection to stdout and EGRESS_LOG (rotated at 5 MB).
  *
  *   EGRESS_SECRET=<hex> [EGRESS_PORT=3128] [EGRESS_LOG=/var/egress/egress.jsonl] node egress-proxy.mjs
@@ -85,7 +86,8 @@ class Window {
   add(n, now = Date.now()) { this.prune(now); this.items.push([now, n]); this.sum += n }
 }
 
-export const DEFAULT_LIMITS = { connsPerMin: 60, concurrent: 16, upPerMin: 5 * 1024 * 1024, downPerMin: 200 * 1024 * 1024, idleMs: 120_000 }
+// No caps in production (company decision); the budget code stays and is tested with explicit limits.
+export const DEFAULT_LIMITS = { connsPerMin: Infinity, concurrent: Infinity, upPerMin: Infinity, downPerMin: Infinity, idleMs: 120_000 }
 const ADMIN_FACTOR = 3
 
 /**

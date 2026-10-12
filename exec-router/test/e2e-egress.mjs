@@ -84,16 +84,16 @@ const reviewNet = sh(review, 'curl -s -m 10 -o /dev/null -w "%{http_code}" https
 check('Admin', 'admin-review: không ra được internet', !reviewNet.out.startsWith('200'), reviewNet.out)
 check('Admin', 'admin-review: không dùng được proxy kể cả tự đặt', status(review, '-x http://admin-review:x@egress-proxy:3128 https://example.com') === '407')
 
-// Upload budget (5 MB/min): an 8 MB POST is cut, and the log says so
+// No caps (DEFAULT_LIMITS): an 8 MB POST goes through, nothing is cut for budget
 const up = sh(alice, 'head -c 8000000 /dev/zero > /tmp/big && curl -s -m 60 -o /dev/null -w "%{http_code}" -X POST --data-binary @/tmp/big https://httpbin.org/post; echo " exit=$?"; rm -f /tmp/big')
-const cut = proxyLog().filter(e => e.zone === `user:${ALICE}` && e.deny === 'upload-limit')
-check('TC15', 'alice: POST 8 MB bị cắt ở hạn mức gửi đi', cut.length > 0 && cut.every(e => e.up <= 5 * 1024 * 1024), `${up.out} | up=${cut.map(e => e.up).join(',')}`)
+const cut = proxyLog().filter(e => e.zone === `user:${ALICE}` && /-limit$/.test(e.deny ?? ''))
+check('TC15', 'alice: POST 8 MB không bị cắt (không hạn mức)', cut.length === 0, `${up.out} | cắt=${cut.length}`)
 
-// Connection rate (60/min per zone): a burst gets 429 before 75 tries; admin is not affected
+// No connection rate cap: a burst of 75 gets no 429; admin is not affected
 const burst = sh(alice, 'for i in $(seq 1 75); do curl -s -o /dev/null -w "%{http_code}/%{http_connect} " -m 20 -I https://example.com; done')
 const codes = burst.out.trim().split(/\s+/)
-check('TC16', 'alice: quá 60 kết nối/phút → 429', codes.some(c => c.endsWith('/429')) && codes.filter(c => c.startsWith('200')).length <= 60, `${codes.filter(c => c.startsWith('200')).length} lần 200`)
-check('TC16', 'admin vẫn dùng được khi alice bị giới hạn', status(admin, '-I https://example.com') === '200')
+check('TC16', 'alice: 75 kết nối/phút không bị 429 (không hạn mức)', !codes.some(c => c.endsWith('/429')), `${codes.filter(c => c.startsWith('200')).length} lần 200`)
+check('TC16', 'admin vẫn dùng được sau loạt kết nối của alice', status(admin, '-I https://example.com') === '200')
 
 // Log content
 const log = proxyLog()
