@@ -6,6 +6,7 @@ Bàn giao đầy đủ (kiến trúc, cách chạy, bẫy): `E:\Company\HANDOFF.
 ## Kiến trúc
 - 1 DSH chung trong container `congty-dsh-main`; plugin `gate/` (đăng nhập, lọc theo người dùng, mặc định chặn: `gate/src/policy.mjs`), `docshield/` (tra cứu), `exec-router/` (công cụ của agent chạy trong container riêng từng người, vùng theo thư mục phiên: `exec-router/src/zones.mjs`).
 - `exec-router/tool-manager.mjs` chạy trên Windows, duy nhất gọi Docker. Egress proxy `container/egress-proxy.mjs` (image riêng `egress-proxy.Dockerfile`, chỉ node) là lối ra internet duy nhất; không hạn mức (`DEFAULT_LIMITS` = Infinity, unit test truyền mức riêng).
+- Hạn mức token theo gói (cửa sổ 5 giờ + tuần): `gate/plugin` bọc `llm/stream`, hỏi gate qua IPC (fail-closed); `gate/src/quota.mjs` quyết định, sổ `quota_windows` trong `gate.db` (chỉ gate ghi). Gán gói ở `/gate/admin`, người dùng xem ở `/gate/usage`. Mức suy luận low/medium/high: `reasoningEfforts` của model trong `settings.yaml`.
 - Vùng: `users/<tên>` (đọc/ghi, internet) · `admin` · `users` = admin xem dữ liệu (chỉ đọc, không mạng).
 
 ## Bản này

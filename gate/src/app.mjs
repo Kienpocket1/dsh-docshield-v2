@@ -12,8 +12,9 @@ import {
 } from './session.mjs'
 import { validateUsername } from './store.mjs'
 import { readEgressLog } from './egress-log.mjs'
+import { ADMIN, SYSTEM, usageOf } from './quota.mjs'
 import {
-  renderAdmin, renderBar, renderLogin, renderNotice, renderPassword, renderRegister, renderSetup,
+  renderAdmin, renderBar, renderLogin, renderNotice, renderPassword, renderRegister, renderSetup, renderUsage,
 } from './views.mjs'
 
 const MAX_FORM_BYTES = 4096
@@ -105,6 +106,15 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
     '/gate/logout': { open: true, POST: logout },
     '/gate/password': { GET: passwordPage, POST: passwordSubmit },
     '/gate/admin': { admin: true, GET: adminPage, POST: adminSubmit },
+    '/gate/usage': { GET: usagePage },
+  }
+
+  /** The signed-in account's own token usage (embedded in the bar's popup with ?embed=1). */
+  function usagePage(_req, res, url, user) {
+    // Admin sessions live outside users/, so their calls are booked to ADMIN.
+    const html = renderUsage(usageOf(store, user.role === 'admin' ? ADMIN : user.username), { embed: url.searchParams.has('embed') })
+    res.writeHead(200, { ...PAGE_HEADERS, 'x-frame-options': 'SAMEORIGIN', 'content-security-policy': PAGE_HEADERS['content-security-policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'") })
+    res.end(html)
   }
 
   async function handle(req, res) {
@@ -320,6 +330,12 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
       audit: store.recentAudit(30),
       registrationOpen: store.registrationOpen(),
       egress: readEgressLog(egressLog),
+      quota: {
+        plans: store.listPlans(),
+        defaultPlan: store.getSetting('default_plan', 'free'),
+        systemPlan: store.getSetting('system_plan', ''),
+        usage: name => usageOf(store, name),
+      },
       ok: url?.searchParams.get('ok') ?? undefined,
       ...extra,
     }))
@@ -339,6 +355,25 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
       store.setSetting('registration_open', open ? '1' : '0')
       store.audit('registration_toggled', { username: me.username, ip, detail: open ? 'mở' : 'tắt' })
       return done(open ? 'reg_open' : 'reg_closed')
+    }
+
+    const plan = String(form.get('plan') ?? '')
+    const known = id => store.getPlan(id) !== undefined
+    if (action === 'update_plan') {
+      const session = parseLimit(form.get('session_limit'))
+      const weekly = parseLimit(form.get('weekly_limit'))
+      if (!known(plan)) return fail('Gói không hợp lệ.')
+      if (session === undefined || weekly === undefined) return fail('Giới hạn token phải là số nguyên ≥ 0, hoặc để trống (không giới hạn).')
+      store.updatePlan(plan, session, weekly)
+      store.audit('plan_changed', { username: me.username, ip, detail: `${plan}: 5 giờ ${session ?? '∞'}, tuần ${weekly ?? '∞'}` })
+      return done('plan_saved')
+    }
+    if (action === 'set_default_plan' || action === 'set_system_plan') {
+      const isDefault = action === 'set_default_plan'
+      if (!known(plan) && !(plan === '' && !isDefault)) return fail('Gói không hợp lệ.')
+      store.setSetting(isDefault ? 'default_plan' : 'system_plan', plan)
+      store.audit('plan_assigned', { username: me.username, ip, detail: `${isDefault ? 'gói mặc định' : SYSTEM}: ${plan || 'theo mặc định'}` })
+      return done('plan_saved')
     }
 
     const target = store.getUser(username)
@@ -372,6 +407,11 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
           store.audit('role_changed', { username: target.username, ip, detail: `${role} bởi ${me.username}` })
           await stopInstance(); return done(action)
         }
+        case 'set_plan':
+          if (plan !== '' && !known(plan)) return fail('Gói không hợp lệ.')
+          store.setPlan(target.username, plan || null)
+          store.audit('plan_assigned', { username: target.username, ip, detail: `${plan || 'theo mặc định'} bởi ${me.username}` })
+          return done('plan_saved')
         case 'reset_password': {
           if (isSelf) return fail('Hãy dùng trang Đổi mật khẩu cho tài khoản của bạn.')
           const temp = tempPassword()
@@ -465,6 +505,13 @@ export function safeNext(value) {
   const v = typeof value === 'string' ? value : ''
   if (/[\x00-\x1f\x7f\\]/.test(v)) return '/'
   return v.startsWith('/') && !v.startsWith('//') && !v.startsWith('/gate/') ? v : '/'
+}
+
+/** Token limit field: blank → null (default/unlimited), whole number ≥ 0 → number, anything else → undefined. */
+export function parseLimit(value) {
+  const s = String(value ?? '').trim()
+  if (s === '') return null
+  return /^\d{1,15}$/.test(s) ? Number(s) : undefined
 }
 
 /** Readable one-time password: 12 characters without look-alikes (0/O, 1/l/I). */

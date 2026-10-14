@@ -1,6 +1,7 @@
 /** Server-rendered gate pages (no scripts; CSP forbids them). */
 import { MIN_PASSWORD_LENGTH } from './password.mjs'
 import { summarize, zoneLabel } from './egress-log.mjs'
+import { ADMIN, SYSTEM, vnTime } from './quota.mjs'
 
 export const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
 
@@ -30,9 +31,9 @@ a{color:var(--accent)}.err{color:var(--err);font-size:14px}.ok{color:var(--ok);f
 .secret{font:600 20px/1.4 ui-monospace,monospace;letter-spacing:.05em}
 `
 
-export function renderPage(title, body) {
+export function renderPage(title, body, head = '') {
   return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(title)} — DocShield</title><style>${STYLE}</style></head><body>${body}</body></html>`
+<title>${escapeHtml(title)} — DocShield</title><style>${STYLE}</style>${head}</head><body>${body}</body></html>`
 }
 
 const errorBox = error => error ? `<div class="err" role="alert">${escapeHtml(error)}</div>` : ''
@@ -93,7 +94,7 @@ ${forced ? '' : '<div class="links"><a href="/">Quay lại</a></div>'}`))
 const MESSAGES = {
   approved: 'Đã duyệt tài khoản.', rejected: 'Đã từ chối đơn đăng ký.', disabled: 'Đã khóa tài khoản; phiên làm việc của người này đã bị tắt.',
   enabled: 'Đã mở khóa tài khoản.', made_admin: 'Đã cấp quyền admin.', made_user: 'Đã chuyển về người dùng thường.',
-  reg_open: 'Đã mở đăng ký tài khoản.', reg_closed: 'Đã tắt đăng ký tài khoản.',
+  reg_open: 'Đã mở đăng ký tài khoản.', reg_closed: 'Đã tắt đăng ký tài khoản.', plan_saved: 'Đã lưu gói token.',
 }
 
 const EVENT_LABELS = {
@@ -101,6 +102,7 @@ const EVENT_LABELS = {
   registered: 'Gửi đăng ký', approved: 'Được duyệt', rejected: 'Bị từ chối', user_disabled: 'Bị khóa', user_enabled: 'Được mở khóa',
   role_changed: 'Đổi vai trò', password_reset: 'Admin đặt lại mật khẩu', password_changed: 'Đổi mật khẩu', setup_admin_created: 'Tạo admin đầu tiên',
   setup_failed: 'Sai mã thiết lập', user_added: 'Tạo bằng dòng lệnh', registration_toggled: 'Bật/tắt đăng ký',
+  plan_changed: 'Sửa gói token', plan_assigned: 'Gán gói token',
 }
 
 const DENY_LABELS = {
@@ -109,6 +111,36 @@ const DENY_LABELS = {
   'upload-limit': 'Vượt hạn mức gửi đi', 'download-limit': 'Vượt hạn mức tải về', idle: 'Hết thời gian chờ', upstream: 'Lỗi máy đích', error: 'Lỗi',
 }
 const bytes = n => { n = Number(n) || 0; return n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1048576).toFixed(1)} MB` }
+
+const num = n => Number(n).toLocaleString('vi-VN')
+const percent = w => w.limit === null ? 0 : w.limit === 0 ? 100 : Math.round(w.used * 100 / w.limit)
+const windowText = w => w.limit === null ? `${num(w.used)} / không giới hạn` : `${percent(w)}% · ${num(w.used)} / ${num(w.limit)}`
+const resetText = w => w.resetsAt === null ? 'Chưa dùng trong cửa sổ này' : `Đặt lại lúc ${vnTime(w.resetsAt)}`
+
+/**
+ * One account's token usage, like Claude Code's usage panel: plan, 5-hour and weekly bars with
+ * percent, tokens and reset time. `embed` is the bar popup's iframe (compact, refreshes every 30 s).
+ * @param {{ plan: { name: string } | null, session: object, week: object }} usage from quota.usageOf
+ */
+export function renderUsage(usage, { embed = false } = {}) {
+  const bar = (label, w) => {
+    const p = percent(w)
+    const color = p >= 100 ? 'var(--err)' : p >= 80 ? 'var(--warn)' : 'var(--accent)'
+    return `<section class="usage-row"><div class="usage-head"><b>${label}</b><span>${w.limit === null ? 'Không giới hạn' : `${p}%`}</span></div>
+<div class="usage-track" role="progressbar" aria-label="${label}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.min(p, 100)}"><div style="width:${Math.min(p, 100)}%;background:${color}"></div></div>
+<div class="usage-sub"><span>${num(w.used)}${w.limit === null ? '' : ` / ${num(w.limit)}`} token</span><span>${resetText(w)}</span></div></section>`
+  }
+  const style = `<style>.usage{display:grid;gap:14px;padding:${embed ? '12px' : '0'}}.usage-row{display:grid;gap:6px}
+.usage-head,.usage-sub{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}.usage-sub{font-size:13px;color:var(--muted)}
+.usage-track{height:6px;border-radius:999px;background:var(--chip);overflow:hidden}.usage-track div{height:100%}
+${embed ? 'body{min-height:0;font-size:14px}' : ''}</style>`
+  const body = `<div class="usage"><div class="usage-head"><span>Gói: <b>${usage.plan === null ? 'Không giới hạn' : escapeHtml(usage.plan.name)}</b></span>${embed ? '<a href="/gate/usage" target="_blank" rel="noopener">Chi tiết</a>' : ''}</div>
+${bar('Giới hạn 5 giờ', usage.session)}${bar('Tuần', usage.week)}</div>`
+  return embed
+    ? renderPage('Mức dùng', body, `${style}<meta http-equiv="refresh" content="30">`)
+    : renderPage('Mức dùng', `<main class="wide"><div class="top"><h1>Mức dùng token</h1><div class="actions"><a href="/">← Về DocShield</a></div></div>${body}
+<p class="usage-sub">Cửa sổ mở từ lời gọi model đầu tiên và kéo dài 5 giờ / 7 ngày. Khi chạm một trong hai giới hạn, lượt chat bị chặn tới giờ đặt lại.</p></main>`, style)
+}
 
 /** Internet access through the egress proxy (docker mode only; undefined → section hidden). */
 function renderEgress(entries) {
@@ -136,6 +168,18 @@ export function renderAdmin(v) {
   const date = s => s ? escapeHtml(s.slice(0, 16).replace('T', ' ')) : '—'
   const statusPill = u => u.disabled ? '<span class="pill off">Đã khóa</span>' : '<span class="pill on">Hoạt động</span>'
   const self = u => u.username === v.me.username
+  const q = v.quota ?? { plans: [], defaultPlan: 'free', systemPlan: '', usage: undefined }
+  const form = (username, act, fields) => `<form method="post" action="/gate/admin" class="actions">${hidden('token', v.token)}${hidden('username', username)}${hidden('action', act)}${fields}<button class="ghost" type="submit">Lưu</button></form>`
+  const planSelect = (username, act, current, blankLabel) => form(username, act, `<select name="plan" aria-label="Gói">${blankLabel ? `<option value="">${blankLabel}</option>` : ''}${q.plans.map(p => `<option value="${escapeHtml(p.id)}"${p.id === current ? ' selected' : ''}>${escapeHtml(p.name)}</option>`).join('')}</select>`)
+  const limitInput = (name, value, label) => `<input name="${name}" type="number" min="0" step="1" value="${value ?? ''}" placeholder="không giới hạn" aria-label="${label}" style="width:9em">`
+  const usageCell = name => {
+    if (q.usage === undefined) return ''
+    const u = q.usage(name)
+    return `5 giờ: ${windowText(u.session)}<br>Tuần: ${windowText(u.week)}`
+  }
+  const quotaCell = u => u.role === 'admin'
+    ? `Không giới hạn (tính vào ${escapeHtml(ADMIN)})`
+    : `${usageCell(u.username)}${planSelect(u.username, 'set_plan', u.plan ?? '', 'Theo gói mặc định')}`
 
   const pendingTable = pending.length === 0 ? '<p>Không có đơn nào đang chờ.</p>' : `<div class="scroll"><table class="table"><thead><tr><th>Tên đăng nhập</th><th>Gửi lúc</th><th>Thao tác</th></tr></thead><tbody>
 ${pending.map(u => `<tr><td>${escapeHtml(u.username)} <span class="pill pending">Chờ duyệt</span></td><td>${date(u.created_at)}</td>
@@ -144,7 +188,7 @@ ${pending.map(u => `<tr><td>${escapeHtml(u.username)} <span class="pill pending"
 
   const accountRows = accounts.map(u => `<tr><td>${escapeHtml(u.username)}${self(u) ? ' (bạn)' : ''}</td>
 <td>${u.role === 'admin' ? 'Admin' : 'Người dùng'}</td><td>${statusPill(u)}${u.must_change_password ? ' <span class="pill pending">Chờ đổi MK</span>' : ''}</td>
-<td>${date(u.last_login_at)}</td><td><div class="actions">
+<td>${date(u.last_login_at)}</td><td>${quotaCell(u)}</td><td><div class="actions">
 ${self(u) ? '' : (u.disabled ? action(u.username, 'enable', 'Mở khóa') : action(u.username, 'disable', 'Khóa', 'danger'))}
 ${self(u) ? '' : (u.role === 'admin' ? action(u.username, 'make_user', 'Bỏ quyền admin') : action(u.username, 'make_admin', 'Cấp quyền admin'))}
 ${self(u) ? '<a href="/gate/password">Đổi mật khẩu của bạn</a>' : action(u.username, 'reset_password', 'Đặt lại mật khẩu')}
@@ -161,7 +205,16 @@ ${v.tempPassword ? `<div class="banner" role="status"><p>Mật khẩu tạm cho 
 ${action('-', v.registrationOpen ? 'close_registration' : 'open_registration', v.registrationOpen ? 'Tắt đăng ký' : 'Mở đăng ký')}</div>
 <h2>Đơn đăng ký chờ duyệt (${pending.length})</h2>${pendingTable}
 <h2>Tài khoản (${accounts.length})</h2>
-<div class="scroll"><table class="table"><thead><tr><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th>Đăng nhập gần nhất</th><th>Thao tác</th></tr></thead><tbody>${accountRows}</tbody></table></div>
+<div class="scroll"><table class="table"><thead><tr><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th>Đăng nhập gần nhất</th><th>Token: mức dùng / gói</th><th>Thao tác</th></tr></thead><tbody>${accountRows}</tbody></table></div>
+<h2>Gói token LLM (cửa sổ 5 giờ và tuần, mở từ lời gọi đầu tiên)</h2>
+<div class="scroll"><table class="table"><thead><tr><th>Gói</th><th>Giới hạn 5 giờ / tuần (token, trống = không giới hạn)</th></tr></thead><tbody>
+${q.plans.map(p => `<tr><td>${escapeHtml(p.name)}${p.id === q.defaultPlan ? ' <span class="pill on">Mặc định</span>' : ''}</td><td>${form('-', 'update_plan', `${hidden('plan', p.id)}${limitInput('session_limit', p.session_limit, `Giới hạn 5 giờ gói ${p.name}`)}${limitInput('weekly_limit', p.weekly_limit, `Giới hạn tuần gói ${p.name}`)}`)}</td></tr>`).join('')}
+</tbody></table></div>
+<div class="scroll"><table class="table"><thead><tr><th>Áp dụng cho</th><th>Mức dùng</th><th>Gói</th></tr></thead><tbody>
+<tr><td>Người dùng chưa gán gói</td><td>—</td><td>${planSelect('-', 'set_default_plan', q.defaultPlan)}</td></tr>
+<tr><td>${escapeHtml(SYSTEM)} — lời gọi không gắn phiên</td><td>${usageCell(SYSTEM)}</td><td>${planSelect('-', 'set_system_plan', q.systemPlan, 'Theo gói mặc định')}</td></tr>
+<tr><td>${escapeHtml(ADMIN)} — phiên ngoài thư mục người dùng</td><td>${usageCell(ADMIN)}</td><td>Không giới hạn</td></tr>
+</tbody></table></div>
 <h2>Nhật ký gần đây</h2>
 <div class="scroll"><table class="table"><thead><tr><th>Thời điểm (UTC)</th><th>Tài khoản</th><th>Sự kiện</th><th>IP</th></tr></thead><tbody>${auditRows}</tbody></table></div>
 ${renderEgress(v.egress)}
@@ -172,6 +225,8 @@ export function renderBar(user) {
   const link = (href, label) => `<a href="${href}" style="color:#e6eaf2;text-decoration:none;padding:3px 8px;border-radius:999px;background:#26345a">${label}</a>`
   return `<form method="post" action="/gate/logout" style="position:fixed;top:8px;right:12px;z-index:2147483647;margin:0;display:flex;gap:6px;align-items:center;font:12px system-ui,sans-serif;background:rgba(18,26,48,.88);color:#e6eaf2;border:1px solid #26345a;border-radius:999px;padding:4px 6px 4px 12px">
 <span>${escapeHtml(user.username)}${user.role === 'admin' ? ' · admin' : ''}</span>
+<details style="position:relative"><summary style="list-style:none;cursor:pointer;padding:3px 8px;border-radius:999px;background:#26345a">Mức dùng</summary>
+<iframe src="/gate/usage?embed=1" loading="lazy" title="Mức dùng token" style="position:absolute;right:0;top:calc(100% + 8px);width:340px;max-width:calc(100vw - 24px);height:230px;border:1px solid #26345a;border-radius:12px;background:#121a30"></iframe></details>
 ${user.role === 'admin' ? link('/gate/admin', 'Quản trị') : ''}${link('/gate/password', 'Đổi mật khẩu')}
 <button type="submit" style="font:inherit;border:0;border-radius:999px;padding:3px 10px;background:#26345a;color:#e6eaf2;cursor:pointer">Đăng xuất</button></form>`
 }

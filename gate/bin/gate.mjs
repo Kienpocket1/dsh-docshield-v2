@@ -16,6 +16,7 @@ import { loadConfig, takeCalibrationToken } from '../src/config.mjs'
 import { createFilter } from '../src/filter.mjs'
 import { hashPassword } from '../src/password.mjs'
 import { loadSecret } from '../src/session.mjs'
+import { Quota } from '../src/quota.mjs'
 import { SessionIndex, callUpstream } from '../src/sessions.mjs'
 import { GateStore } from '../src/store.mjs'
 import { Upstream } from '../src/upstream.mjs'
@@ -95,6 +96,19 @@ async function serve() {
   process.on('SIGINT', shutdown)
   process.on('SIGTERM', shutdown)
   process.on('SIGHUP', shutdown)
+  // Token quota for DSH's model calls, asked by the plugin over the IPC channel it opened (no port).
+  if (process.send) {
+    const quota = new Quota({ store, sessions, storageRoot: config.storageRoot, log })
+    process.on('message', async msg => {
+      if (msg?.op === 'settle') {
+        try { quota.settle(msg) } catch (err) { log(`quota: settle failed (${err.message})`) }
+        return
+      }
+      if (msg?.op !== 'reserve') return
+      const reply = await quota.reserve(msg).catch(err => ({ ok: false, message: `Gate: lỗi kiểm tra hạn mức (${err.message}).` }))
+      if (process.connected) process.send({ id: msg.id, ...reply })
+    })
+  }
   // Started by the dsh-gate plugin: its pipe closes when DSH exits, and the gate goes with it.
   if (flag('--plugin')) {
     process.stdin.on('end', shutdown)

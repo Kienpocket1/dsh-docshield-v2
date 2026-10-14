@@ -28,8 +28,13 @@ llm-pi-ai:
       apiKeyEnv: NIEN_ROUTER_API_KEY
       api: openai-completions
       baseURL: http://host.docker.internal:20128/v1
+      reasoning: "medium"
       models:
         - id: my-models-free
+          reasoningEfforts:
+            low: "low"
+            medium: "medium"
+            high: "high"
 agent-default-model:
   provider: nien-router
   model: my-models-free

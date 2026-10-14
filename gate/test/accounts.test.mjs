@@ -47,9 +47,9 @@ async function anonForm(pagePath, fields) {
 const login = (username, password) => anonForm('/gate/login', { username, password, next: '/' })
 const register = (username, password, password2 = password) => anonForm('/gate/register', { username, password, password2 })
 
-async function adminAction(session, action, username) {
+async function adminAction(session, action, username, extra = {}) {
   const page = await request('GET', '/gate/admin', { cookie: session })
-  return request('POST', '/gate/admin', { cookie: session, body: new URLSearchParams({ token: field(page.body, 'token'), action, username }).toString() })
+  return request('POST', '/gate/admin', { cookie: session, body: new URLSearchParams({ token: field(page.body, 'token'), action, username, ...extra }).toString() })
 }
 
 describe('self-registration and approval', () => {
@@ -133,6 +133,45 @@ describe('account management', () => {
     assert.equal((await login('frank', 'frank-password')).status, 401)
     await adminAction(boss, 'enable', 'frank')
     assert.equal((await login('frank', 'frank-password')).status, 303)
+  })
+
+  it('token plans: assign per user, edit limits, default and system plan; admins unlimited', async () => {
+    assert.equal(store.planOf('frank').id, 'free')
+    assert.equal((await adminAction(boss, 'set_plan', 'frank', { plan: 'max' })).status, 303)
+    assert.equal(store.planOf('frank').id, 'max')
+    assert.match((await adminAction(boss, 'set_plan', 'frank', { plan: 'gold' })).body, /Gói không hợp lệ/)
+    await adminAction(boss, 'set_plan', 'frank', { plan: '' })
+    assert.equal(store.planOf('frank').id, 'free')
+    await adminAction(boss, 'set_default_plan', '-', { plan: 'pro' })
+    assert.equal(store.planOf('frank').id, 'pro')
+    await adminAction(boss, 'update_plan', '-', { plan: 'pro', session_limit: '123000', weekly_limit: '' })
+    assert.deepEqual([store.getPlan('pro').session_limit, store.getPlan('pro').weekly_limit], [123000, null])
+    assert.match((await adminAction(boss, 'update_plan', '-', { plan: 'pro', session_limit: '-5', weekly_limit: '1' })).body, /số nguyên/)
+    await adminAction(boss, 'set_system_plan', '-', { plan: 'max' })
+    assert.equal(store.planOf('(hệ thống)', 'system_plan').id, 'max')
+    assert.equal(store.planOf('boss'), null)
+    const page = (await request('GET', '/gate/admin', { cookie: boss })).body
+    assert.match(page, /Gói token LLM/)
+    assert.match(page, /123\.000/)
+    assert.ok(store.recentAudit(5).some(a => a.event === 'plan_changed'))
+    await adminAction(boss, 'set_default_plan', '-', { plan: 'free' })
+    await adminAction(boss, 'update_plan', '-', { plan: 'pro', session_limit: '500000', weekly_limit: '2500000' })
+  })
+
+  it('/gate/usage shows only the signed-in user\'s own usage, frameable by the same origin only', async () => {
+    store.addToWindow('frank', 'session', 25_000, Date.now(), 5 * 3600_000)
+    store.addToWindow('boss', 'session', 99_999, Date.now(), 5 * 3600_000)
+    const frank = cookieOf(await login('frank', 'frank-password'), 'gate_session')
+    const res = await request('GET', '/gate/usage?embed=1', { cookie: frank })
+    assert.equal(res.status, 200)
+    assert.match(res.body, /Gói: <b>Free<\/b>/)
+    assert.match(res.body, /25%/)
+    assert.match(res.body, /25\.000 \/ 100\.000 token/)
+    assert.doesNotMatch(res.body, /99\.999/)
+    assert.match(res.headers['content-security-policy'], /frame-ancestors 'self'/)
+    assert.match((await request('GET', '/gate/admin', { cookie: boss })).headers['content-security-policy'], /frame-ancestors 'none'/)
+    assert.match((await request('GET', '/gate/usage', { cookie: boss })).body, /Không giới hạn/)
+    assert.equal((await request('GET', '/gate/usage')).status, 302)
   })
 
   it('protects the admin from locking themselves out', async () => {

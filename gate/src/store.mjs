@@ -57,6 +57,20 @@ export class GateStore {
     const columns = new Set(this.db.prepare('PRAGMA table_info(users)').all().map(c => c.name))
     if (!columns.has('status')) this.db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
     if (!columns.has('must_change_password')) this.db.exec('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0')
+    // v4: token plans with a 5-hour and a weekly window (v3's daily token_limit/token_usage are no longer read).
+    // Only the gate process writes these. started_at is Unix ms: the window UPSERT does integer math on it.
+    if (!columns.has('plan')) this.db.exec('ALTER TABLE users ADD COLUMN plan TEXT')
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, name TEXT NOT NULL, session_limit INTEGER, weekly_limit INTEGER);
+      INSERT OR IGNORE INTO plans VALUES ('free', 'Free', 100000, 500000), ('pro', 'Pro', 500000, 2500000), ('max', 'Max', 2500000, 12500000);
+      CREATE TABLE IF NOT EXISTS quota_windows (
+        username TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        started_at INTEGER NOT NULL CHECK (typeof(started_at) = 'integer'),
+        used INTEGER NOT NULL,
+        PRIMARY KEY (username, kind)
+      );
+    `)
   }
 
   close() { this.db.close() }
@@ -130,8 +144,59 @@ export class GateStore {
   }
 
   listUsers() {
-    return this.db.prepare(`SELECT id, username, role, status, disabled, must_change_password, created_at, last_login_at
+    return this.db.prepare(`SELECT id, username, role, status, disabled, must_change_password, plan, created_at, last_login_at
       FROM users ORDER BY status DESC, username`).all()
+  }
+
+  listPlans() {
+    return this.db.prepare('SELECT * FROM plans ORDER BY session_limit IS NULL, session_limit').all()
+  }
+
+  getPlan(id) {
+    return this.db.prepare('SELECT * FROM plans WHERE id = ?').get(id)
+  }
+
+  /**
+   * The plan limiting this name, or null when unlimited (admins). Unknown names (the virtual SYSTEM
+   * account) follow `systemPlanSetting` when given, else the default plan.
+   */
+  planOf(username, systemPlanSetting) {
+    const user = this.getUser(username)
+    if (user?.role === 'admin') return null
+    let id = user?.plan
+    if (!id && user === undefined && systemPlanSetting) id = this.getSetting(systemPlanSetting, '')
+    if (!id) id = this.getSetting('default_plan', 'free')
+    return this.getPlan(id) ?? this.getPlan('free') ?? null
+  }
+
+  /** @param {string | null} plan null = follow the default plan */
+  setPlan(username, plan) {
+    if (plan !== null && this.getPlan(plan) === undefined) throw new Error(`Không có gói ${plan}`)
+    const r = this.db.prepare('UPDATE users SET plan = ? WHERE username = ?').run(plan, username)
+    if (r.changes === 0) throw new Error(`Không có tài khoản ${username}`)
+  }
+
+  /** Limits in tokens; null = unlimited. */
+  updatePlan(id, sessionLimit, weeklyLimit) {
+    const r = this.db.prepare('UPDATE plans SET session_limit = ?, weekly_limit = ? WHERE id = ?').run(sessionLimit, weeklyLimit, id)
+    if (r.changes === 0) throw new Error(`Không có gói ${id}`)
+  }
+
+  /** @returns {{ started_at: number, used: number } | undefined} */
+  getWindow(username, kind) {
+    return this.db.prepare('SELECT started_at, used FROM quota_windows WHERE username = ? AND kind = ?').get(username, kind)
+  }
+
+  /**
+   * Add tokens to the window open at `now`, reopening it first when it ended: one atomic statement
+   * (SQLite evaluates every SET expression on the row's old values, so both CASEs see the same start).
+   */
+  addToWindow(username, kind, tokens, now, lengthMs) {
+    this.db.prepare(`INSERT INTO quota_windows (username, kind, started_at, used) VALUES (:u, :kind, :now, :n)
+      ON CONFLICT (username, kind) DO UPDATE SET
+        started_at = CASE WHEN started_at + :len <= :now THEN :now ELSE started_at END,
+        used = CASE WHEN started_at + :len <= :now THEN :n ELSE used + :n END`)
+      .run({ u: username, kind, now: Math.trunc(now), n: Math.max(0, Math.round(tokens)), len: lengthMs })
   }
 
   /** New password invalidates every existing session of that user. */
