@@ -1,6 +1,6 @@
 # DSH-DocShield (bản công ty) — ghi chú cho agent
 
-Trả lời tiếng Việt. Chỉ commit trên máy; chưa có remote — không tự gắn/push (repo GitHub public của đồ án KHÔNG phải của bản này).
+Trả lời tiếng Việt. Remote `origin` = github.com/Kienpocket1/dsh-docshield-v2 (nhánh `cong-ty`); chỉ push khi người dùng yêu cầu (repo đồ án là repo khác).
 Bàn giao đầy đủ (kiến trúc, cách chạy, bẫy): `E:\Company\HANDOFF.md` — chỉ đọc khi cần.
 
 ## Kiến trúc
