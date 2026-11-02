@@ -31,6 +31,17 @@ describe('createGuard', () => {
     expect(call('bash', 'E:\\storage\\admin')).toMatch(/không được phép/)
   })
 
+  it('my_access is a user-only tool: the admin never gets it, in or out of a container', () => {
+    expect(USER_TOOLS.has('my_access')).toBe(true)
+    expect(ADMIN_TOOLS.has('my_access')).toBe(false)
+    expect(call('my_access', 'E:\\storage\\users\\alice')).toBeUndefined()
+    expect(call('my_access', 'E:\\storage\\admin')).toMatch(/không được phép/)
+    const admin = createGuard('/storage', { identity: { role: 'admin' } }, true)
+    expect(admin({ name: 'my_access', agent: { session: { id: 's', header: { cwd: '/storage/admin' } } } })).toMatch(/không được phép/)
+    const sandboxed = createGuard(path.resolve('/data'), {}, true)
+    expect(sandboxed({ name: 'my_access', agent: { session: { id: 's', header: { cwd: path.join(path.resolve('/data'), 'users') } } } })).toMatch(/không dùng/)
+  })
+
   it('denies everything in malformed places under the root', () => {
     expect(call('scoped_doc_search', 'E:\\storage\\public_docs')).toMatch(/không nằm trong workspace hợp lệ/)
     expect(call('scoped_doc_search', 'E:\\storage')).toMatch(/không nằm trong workspace hợp lệ/)

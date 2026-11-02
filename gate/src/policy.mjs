@@ -109,6 +109,12 @@ export function checkCall(method, args, access) {
     const { paths } = collect(args)
     return paths.length > 0 && paths.every(access.inRoot) ? { allow: true } : { allow: false, reason: 'thư mục ngoài vùng của bạn' }
   }
+  // Extra workspaces only below the user's folder, and not through a link that leads out of it.
+  if (method === 'workspace/create') {
+    const { paths } = collect(args)
+    const ok = paths.length > 0 && paths.every(p => access.inRoot(p) && (!access.realInRoot || access.realInRoot(p)))
+    return ok ? { allow: true } : { allow: false, reason: 'chỉ được tạo workspace trong thư mục của bạn' }
+  }
   if (SESSION_SCOPED.has(method)) {
     const { ids, paths } = collect(args)
     if (ids.length === 0) return { allow: false, reason: 'thiếu mã phiên' }

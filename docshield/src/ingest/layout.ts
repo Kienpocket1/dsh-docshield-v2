@@ -1,6 +1,7 @@
 /**
  * Storage layout ↔ ingestion targets.
- *   users/<u>/docs/<file>  → scope 'user:<u>'
+ *   users/<u>/docs/<file>        → scope 'user:<u>'
+ *   users/<u>/<wsp>/docs/<file>  → scope 'user:<u>', key prefixed by <wsp> (one workspace level)
  *   public_docs/<file>     → scope 'public'
  * Only direct children with an already-safe name are indexed; anything else
  * under the root is ignored.
@@ -14,11 +15,26 @@ import { docKeyFromFilename, sanitizeFilename } from './sanitize.js'
 export const PUBLIC_SCOPE = 'public'
 export const userScope = (userId: string) => `user:${userId}`
 
-/** Where uploads from a session of this scope land: users → own docs, admin → public_docs. */
-export function uploadDirFor(storageRoot: string, scope: DocScope): { dir: string; partition: string } {
-  return scope.role === 'user'
-    ? { dir: path.join(storageRoot, 'users', scope.userId, 'docs'), partition: userScope(scope.userId) }
-    : { dir: path.join(storageRoot, 'public_docs'), partition: PUBLIC_SCOPE }
+/** Workspace folder name under users/<u>; same rule as user ids (no dots, so never `docs` traversal tricks). */
+const WORKSPACE_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
+
+/**
+ * Where uploads from a session of this scope land: users → `<workspace>/docs`
+ * when the session cwd is `users/<u>/<wsp>[/…]`, else `users/<u>/docs`; admin → public_docs.
+ */
+export function uploadDirFor(storageRoot: string, scope: DocScope, cwd?: string): { dir: string; partition: string } {
+  if (scope.role !== 'user') return { dir: path.join(storageRoot, 'public_docs'), partition: PUBLIC_SCOPE }
+  const userDir = path.join(storageRoot, 'users', scope.userId)
+  const wsp = cwd === undefined ? undefined : workspaceOf(userDir, cwd)
+  return { dir: path.join(userDir, ...(wsp === undefined ? [] : [wsp]), 'docs'), partition: userScope(scope.userId) }
+}
+
+/** First folder of `cwd` below `userDir`, if it is a valid workspace name other than `docs`. */
+function workspaceOf(userDir: string, cwd: string): string | undefined {
+  const rel = path.relative(path.resolve(userDir), path.resolve(cwd))
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) return undefined
+  const first = rel.split(path.sep)[0]!
+  return first !== 'docs' && WORKSPACE_PATTERN.test(first) ? first : undefined
 }
 
 /**
@@ -48,9 +64,16 @@ export function targetForPath(storageRoot: string, file: string): IngestTarget |
   const parts = rel.split(path.sep)
   let scope: string
   let filename: string
+  let prefix = ''
   if (parts.length === 4 && parts[0] === 'users' && parts[2] === 'docs' && USER_ID_PATTERN.test(parts[1]!)) {
     scope = userScope(parts[1]!)
     filename = parts[3]!
+  } else if (parts.length === 5 && parts[0] === 'users' && parts[3] === 'docs' && USER_ID_PATTERN.test(parts[1]!)
+    && parts[2] !== 'docs' && WORKSPACE_PATTERN.test(parts[2]!)) {
+    // Workspace docs share the user's scope; the prefix keeps same-named files in two workspaces apart.
+    scope = userScope(parts[1]!)
+    filename = parts[4]!
+    prefix = `${parts[2]}__`
   } else if (parts.length === 2 && parts[0] === 'public_docs') {
     scope = PUBLIC_SCOPE
     filename = parts[1]!
@@ -62,5 +85,5 @@ export function targetForPath(storageRoot: string, file: string): IngestTarget |
   } catch {
     return null
   }
-  return { scope, docKey: docKeyFromFilename(filename), filename, path: path.resolve(file) }
+  return { scope, docKey: docKeyFromFilename(prefix + filename), filename, path: path.resolve(file) }
 }

@@ -54,8 +54,9 @@ export class StorageWatcher {
     const root = this.storageRoot
     for (const user of await listSafe(root, usersDir, { dirs: true })) {
       if (owned !== undefined && owned !== `user:${user}`) continue
-      const docs = path.join(usersDir, user, 'docs')
-      for (const name of await listSafe(root, docs)) files.push(path.join(docs, name))
+      for (const docs of await this.docsDirsOf(path.join(usersDir, user))) {
+        for (const name of await listSafe(root, docs)) files.push(path.join(docs, name))
+      }
     }
     const publicDir = path.join(root, 'public_docs')
     if (owned === undefined || owned === PUBLIC_SCOPE) {
@@ -126,9 +127,10 @@ export class StorageWatcher {
       want.set(usersDir, 'tree')
       for (const user of await listSafe(root, usersDir, { dirs: true })) {
         if (owned !== undefined && owned !== `user:${user}`) continue
-        want.set(path.join(usersDir, user), 'tree')
-        const docs = path.join(usersDir, user, 'docs')
-        if (await this.isPlainDir(docs)) want.set(docs, 'docs')
+        const userDir = path.join(usersDir, user)
+        want.set(userDir, 'tree')
+        for (const wsp of await listSafe(root, userDir, { dirs: true })) if (wsp !== 'docs') want.set(path.join(userDir, wsp), 'tree')
+        for (const docs of await this.docsDirsOf(userDir)) want.set(docs, 'docs')
       }
     }
     const publicDir = path.join(root, 'public_docs')
@@ -151,6 +153,18 @@ export class StorageWatcher {
       // A docs folder that appeared after startup may already hold files written before its watcher existed.
       if (role === 'docs' && !initial) for (const name of await listSafe(root, dir)) this.schedule(path.join(dir, name))
     }
+  }
+
+  /** `users/<u>/docs` and each `users/<u>/<wsp>/docs` that is a real directory (links skipped). */
+  private async docsDirsOf(userDir: string): Promise<string[]> {
+    const out: string[] = []
+    const own = path.join(userDir, 'docs')
+    if (await this.isPlainDir(own)) out.push(own)
+    for (const wsp of await listSafe(this.storageRoot, userDir, { dirs: true })) {
+      const docs = path.join(userDir, wsp, 'docs')
+      if (wsp !== 'docs' && await this.isPlainDir(docs)) out.push(docs)
+    }
+    return out
   }
 
   private async isPlainDir(dir: string): Promise<boolean> {

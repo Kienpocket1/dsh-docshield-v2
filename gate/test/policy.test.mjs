@@ -68,6 +68,16 @@ describe('checkCall', () => {
       assert.equal(checkCall(m, {}, access()).allow, false, m)
     }
   })
+  it('creates extra workspaces only below the user folder', () => {
+    const create = (p, a = access()) => checkCall('workspace/create', { request: { path: p } }, a).allow
+    assert.equal(create(path.join(ALICE, 'du-an-A')), true)
+    assert.equal(create(ALICE), true)
+    assert.equal(create(BOB), false)
+    assert.equal(create(path.join(STORAGE, 'admin')), false)
+    assert.equal(create(path.join(ALICE, '..', 'bob')), false)
+    assert.equal(checkCall('workspace/create', { request: {} }, access()).allow, false)
+    assert.equal(create(path.join(ALICE, 'lt'), { ...access(), realInRoot: p => !p.endsWith('lt') }), false, 'a link out of the folder')
+  })
   it('creates sessions only in the user folder, forcing the DocShield preset', () => {
     const ok = checkCall('session/create', { request: { workspaceId: 'w-alice', agentPreset: 'standard' } }, access())
     assert.equal(ok.allow, true)

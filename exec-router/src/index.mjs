@@ -122,15 +122,21 @@ export function apply(ctx, config = {}) {
   const notFound = p => new FsError(`Không tìm thấy ${p}.`, 'FS_NOT_FOUND')
   /** Zone allowed to read `target`, or undefined when it must look absent. */
   const readableZone = target => { const z = readZone(); return z !== undefined && insideZone(z, String(target?.targetKey)) ? z : undefined }
+  /** Base for relative paths: the running session's cwd (its workspace), else the zone root. */
+  const baseCwd = zone => {
+    const c = ctx.agents?.currentInitiator?.()?.session?.header?.cwd
+    return typeof c === 'string' && insideZone(zone, c) ? path.posix.normalize(c) : rootsOf(zone)[0]
+  }
 
   class RoutedFileSystem extends FileSystem {
     get sandboxMode() { return policyService.defaultMode }
     async resolve(p, opts) {
       const zone = readZone()
-      const abs = absolute(p, opts?.cwd ?? (zone ? rootsOf(zone)[0] : '/'))
+      const cwd = opts?.cwd ?? (zone ? baseCwd(zone) : '/')
+      const abs = absolute(p, cwd)
       // Outside: a target that names the path but that every read reports as absent.
       if (zone === undefined || !insideZone(zone, abs)) return { targetKey: abs, displayPath: String(p) }
-      const target = await bundle(zone).fs.resolve(p, opts)
+      const target = await bundle(zone).fs.resolve(p, { ...opts, cwd })
       // The helper resolved links: a target that lands outside is absent too.
       return insideZone(zone, String(target.targetKey)) ? target : { targetKey: String(target.targetKey), displayPath: String(p) }
     }
@@ -143,8 +149,9 @@ export function apply(ctx, config = {}) {
     async stat(target, signal) { const z = readableZone(target); return z ? bundle(z).fs.stat(target, signal) : undefined }
     async lstat(p, opts, signal) {
       const z = readZone()
-      if (z === undefined || !insideZone(z, absolute(p, opts?.cwd ?? rootsOf(z)[0]))) return undefined
-      return bundle(z).fs.lstat(p, opts, signal)
+      const cwd = z === undefined ? undefined : opts?.cwd ?? baseCwd(z)
+      if (z === undefined || !insideZone(z, absolute(p, cwd))) return undefined
+      return bundle(z).fs.lstat(p, { ...opts, cwd }, signal)
     }
     async readText(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readText(target, signal) }
     async streamText(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.streamText(target, signal) }

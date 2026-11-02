@@ -14,15 +14,22 @@ export const USER_TOOLS: ReadonlySet<string> = new Set([
   'create_support_ticket',
   'check_ticket_status',
   'list_documents',
+  'my_access',
 ])
 
+/** User tools the admin never gets. */
+const USER_ONLY_TOOLS: ReadonlySet<string> = new Set(['my_access'])
+
 export const ADMIN_TOOLS: ReadonlySet<string> = new Set([
-  ...USER_TOOLS,
+  ...[...USER_TOOLS].filter(t => !USER_ONLY_TOOLS.has(t)),
   'list_tickets',
   'update_ticket',
   'publish_public_doc',
   'reindex_document',
 ])
+
+/** Every DocShield tool, whatever the role. */
+export const DOC_TOOLS: ReadonlySet<string> = new Set([...USER_TOOLS, ...ADMIN_TOOLS])
 
 /**
  * @param allowOtherTools per-user container (sandbox S4): shell, file and the
@@ -37,14 +44,14 @@ export function createGuard(storageRoot: string, options: ScopeOptions = {}, all
     // Tool sandbox only: the admin's "all users" workspace (<root>/users, read-only and offline in
     // its tool container; only admins get it) runs harness tools but no DocShield tool.
     if (scope === null && allowOtherTools && isUsersRoot(cwd, storageRoot)) {
-      return ADMIN_TOOLS.has(exec.name) ? 'DocShield: công cụ DocShield không dùng trong workspace xem dữ liệu người dùng.' : undefined
+      return DOC_TOOLS.has(exec.name) ?'DocShield: công cụ DocShield không dùng trong workspace xem dữ liệu người dùng.' : undefined
     }
     if (scope === null) {
       return 'DocShield: phiên này không nằm trong workspace hợp lệ (storage/users/<tên> hoặc storage/admin); mọi công cụ bị chặn.'
     }
     const allowed = scope.role === 'admin' ? ADMIN_TOOLS : USER_TOOLS
     if (allowed.has(exec.name)) return undefined
-    if (allowOtherTools && !ADMIN_TOOLS.has(exec.name)) return undefined
+    if (allowOtherTools && !DOC_TOOLS.has(exec.name)) return undefined
     return `DocShield: công cụ "${exec.name}" không được phép trong workspace DocShield.`
   }
 }

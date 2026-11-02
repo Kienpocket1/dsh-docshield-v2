@@ -50,6 +50,23 @@ export function docCalls(service: DocShieldService): Record<string, DocCall> {
       const documents = service.listDocuments(scope)
       return { count: documents.length, documents }
     },
+    my_access: async (_args, { scope }) => {
+      if (scope.role !== 'user') throw new ArgumentError('DocShield: công cụ này chỉ dành cho người dùng.')
+      const documents = service.listDocuments(scope)
+      const tickets = service.tickets.list({ userId: scope.userId })
+      return {
+        role: 'người dùng',
+        userId: scope.userId,
+        dataScope: 'Tài liệu chung và tài liệu cá nhân của bạn; không xem được dữ liệu của người khác.',
+        allowedTools: [...USER_TOOLS],
+        deniedFunctions: ['Xem hoặc xử lý phiếu hỗ trợ của người khác', 'Công bố hoặc nạp lại tài liệu chung', 'Trang quản trị /gate/admin'],
+        documents: {
+          personal: documents.filter(d => d.scope === 'cá nhân').length,
+          public: documents.filter(d => d.scope === 'chung').length,
+        },
+        tickets: { total: tickets.length, open: tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length },
+      }
+    },
     scoped_doc_search: async (args, { scope, sessionId }) => {
       const query = requireString(args, 'query', { max: 1000 })
       const k = optionalInt(args, 'k', 1, 8)

@@ -14,8 +14,9 @@
  * credentials for their own zone (admin-review gets none: it stays offline).
  *
  *   node exec-router/tool-manager.mjs            start the whole system
- * A zone over its disk quota is blocked until tool-manager restarts; after a
- * (re)start every zone gets 10 minutes of grace to delete files.
+ * A zone over its disk quota is blocked; each refused request re-measures it, so once an
+ * admin deletes files the next request unblocks it. After a (re)start every zone gets
+ * 10 minutes of grace to delete files itself.
  * Environment: TOOL_PREFIX (default "docshield"; e2e uses "e2e"), GATE_PUBLISH (127.0.0.1:3444),
  *   TOOL_MANAGER_PORT (3460), DOCKER_BIN, TOOL_QUOTA_MB (1024), TOOL_IMAGE / MAIN_IMAGE / PROXY_IMAGE
  *   (docshield-tools / docshield-dsh-main / docshield-egress-proxy, tag dev); for tests only:
@@ -127,8 +128,23 @@ export function keyedQueue() {
 }
 const inZone = keyedQueue()
 
+/** Bytes used by a zone, measured in a throwaway offline container with read-only mounts; NaN on failure. */
+async function measure(zone) {
+  const { mounts, root } = zoneSpec(zone)
+  const ro = mounts.map(m => m.startsWith('type=') && !m.endsWith(',readonly') ? `${m},readonly` : m)
+  const out = await docker(['run', '--rm', '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--user', '1000:1000',
+    '--label', `${P}.role=measure`, '--entrypoint', 'du', ...ro, IMAGE_TOOLS, '-sb', root]).then(r => r.stdout, () => '')
+  return Number(out.split(/\s/)[0])
+}
+
 async function ensure(zone) {
-  if (blocked.has(zone)) throw Object.assign(new Error('Thư mục đã vượt hạn mức dung lượng; hãy liên hệ admin.'), { status: 403 })
+  if (blocked.has(zone)) {
+    // ponytail: one throwaway container per refused request; cache the result if blocked users hammer it.
+    const bytes = await measure(zone)
+    if (!(bytes <= QUOTA)) throw Object.assign(new Error('Thư mục đã vượt hạn mức dung lượng; hãy liên hệ admin.'), { status: 403 })
+    blocked.delete(zone)
+    log(`${zone} đã về dưới hạn mức (${Math.round(bytes / 1048576)} MB): gỡ chặn`)
+  }
   const current = running.get(zone)
   if (current) {
     const state = await docker(['inspect', '-f', '{{.State.Running}}', current.name]).then(r => r.stdout.trim(), () => 'false')

@@ -2,7 +2,7 @@
  * Chat uploads → documents. When a user message in a DocShield session
  * carries file parts, copy each admitted file from DSH's attachment store
  * into the session scope's upload folder and index it:
- *   users/<u> session → users/<u>/docs (personal)
+ *   users/<u> session → users/<u>/docs, or users/<u>/<wsp>/docs from a workspace (personal)
  *   admin session     → public_docs    (public)
  */
 import { readFile } from 'node:fs/promises'
@@ -65,7 +65,7 @@ export async function ingestUploads(
 ): Promise<IngestedUpload[]> {
   const { scope } = resolveScope(session.header.cwd, deps.storageRoot, deps.scopeOptions)
   if (scope === null || refs.length === 0) return []
-  const { dir } = uploadDirFor(deps.storageRoot, scope)
+  const { dir } = uploadDirFor(deps.storageRoot, scope, session.header.cwd)
   const results: IngestedUpload[] = []
   for (const ref of refs) {
     let filename = ref.name

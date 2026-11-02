@@ -58,6 +58,12 @@ export const TOOL_SPECS: readonly ToolSpec[] = [
     parameters: obj({}, []),
   },
   {
+    name: 'my_access',
+    needs: 'user',
+    description: 'Cho người dùng biết quyền của chính họ: vai trò, phạm vi dữ liệu được xem, chức năng được dùng và không được dùng, số tài liệu và phiếu hỗ trợ của họ. Chỉ gọi khi người dùng hỏi trực tiếp về quyền hoặc vai trò của họ (ví dụ "tôi có quyền gì", "tôi làm được gì", "vai trò của tôi"). Không gọi khi họ yêu cầu làm một việc cụ thể (liệt kê phiếu, tìm tài liệu…): khi đó dùng công cụ phù hợp, hoặc nói rõ chức năng đó không có.',
+    parameters: obj({}, []),
+  },
+  {
     name: 'list_tickets',
     needs: 'admin',
     description: 'Admin: liệt kê phiếu hỗ trợ, có thể lọc theo trạng thái.',

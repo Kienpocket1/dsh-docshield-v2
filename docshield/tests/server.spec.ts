@@ -69,6 +69,18 @@ describe('docshield server', () => {
     expect(found.hits.map(h => h.filename)).not.toContain('cv_bob.txt')
   })
 
+  it('my_access answers for the token owner only, and is refused to an admin token', async () => {
+    await tokens('PUT', { token: tokenFor('a'), scope: alice })
+    await tokens('PUT', { token: tokenFor('b'), scope: admin })
+    const mine = await new RemoteDocShield('/storage', alice, url, tokenFor('a'))
+      .invoke('my_access', {}, { scope: alice, sessionId: 's1' }) as { userId: string, allowedTools: string[], documents: { personal: number, public: number } }
+    expect(mine.userId).toBe('alice')
+    expect(mine.allowedTools).not.toContain('list_tickets')
+    expect(mine.documents).toEqual({ personal: 1, public: 1 })
+    await expect(new RemoteDocShield('/storage', admin, url, tokenFor('b'))
+      .invoke('my_access', {}, { scope: admin, sessionId: 's2' })).rejects.toBeInstanceOf(ArgumentError)
+  })
+
   it('stores and indexes an upload in the token owner\'s folder', async () => {
     await tokens('PUT', { token: tokenFor('a'), scope: alice })
     const client = new RemoteDocShield('/storage', alice, url, tokenFor('a'))
