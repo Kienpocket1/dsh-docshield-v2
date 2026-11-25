@@ -13,6 +13,18 @@ import { passthrough } from './helpers.mjs'
 const dir = mkdtempSync(path.join(tmpdir(), 'dsh-gate-acc-'))
 let gate, port, store, upstream
 const stopped = []
+// In-memory stand-in for DocShield's ticket CLI (dist/cli/tickets.js).
+const ticketCalls = []
+const TICKET = { code: 'TICK-101', userId: 'frank', question: 'Học phí 2027?', reason: 'không thấy', status: 'in_progress', statusLabel: 'Đang xử lý', adminReply: null, createdAt: '2026-11-23T01:00:00Z' }
+const PROPOSAL = { id: 7, config: 'H1', model: 'm', status: 'draft', createdAt: '2026-11-23T01:05:00Z', raw: 'r', tokens: 1200, seconds: 90,
+  payload: { chan_doan: 'thieu', tra_loi: '14 triệu đồng', trich_dan: [{ file: 'hoc-phi.pdf', vi_tri: 'tr. 2', nguyen_van: '14.000.000' }], phieu_ly_do: 'đã tìm học phí 2027', de_xuat_cap_nhat_kho: null, da_kiem_chung: true } }
+async function fakeTickets(args, input) {
+  ticketCalls.push({ args, input })
+  if (args[0] === 'list') return [{ ...TICKET, proposals: 1, drafts: 1 }]
+  if (args[0] === 'get') { if (args[1] !== 'TICK-101') throw new Error('Không tìm thấy phiếu ' + args[1] + '.'); return { ticket: TICKET, proposals: [PROPOSAL] } }
+  if (args[0] === 'decide') { if (!input.reply.trim()) throw new Error('Câu trả lời gửi người hỏi không được để trống.'); return {} }
+  throw new Error('?')
+}
 
 before(async () => {
   upstream = http.createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('DSH') })
@@ -21,7 +33,7 @@ before(async () => {
   store = new GateStore(path.join(dir, 'acc.db'))
   store.addUser('boss', 'admin', await hashPassword('boss-password'))
   const { upstream: dsh, filter } = passthrough(up, { disconnected: stopped })
-  gate = createGate({ store, secret: Buffer.alloc(32, 9), upstream: dsh, filter })
+  gate = createGate({ store, secret: Buffer.alloc(32, 9), upstream: dsh, filter, tickets: fakeTickets })
   await new Promise(r => gate.listen(0, '127.0.0.1', r))
   port = gate.address().port
 })
@@ -133,6 +145,42 @@ describe('account management', () => {
     assert.equal((await login('frank', 'frank-password')).status, 401)
     await adminAction(boss, 'enable', 'frank')
     assert.equal((await login('frank', 'frank-password')).status, 303)
+  })
+
+  it('presets: assign per user, follow default, default list', async () => {
+    assert.equal(store.presetsOf('frank'), undefined, 'nothing set: caller uses env default')
+    assert.equal((await adminAction(boss, 'set_presets', 'frank', { preset: 'p3-h1' })).status, 303)
+    assert.deepEqual(store.presetsOf('frank'), ['p3-h1'])
+    await adminAction(boss, 'set_presets', 'frank', { preset: 'bad id!' })
+    assert.deepEqual(store.presetsOf('frank'), [], 'malformed ids dropped')
+    await adminAction(boss, 'set_default_presets', '-', { preset: 'p3-h2' })
+    await adminAction(boss, 'set_presets', 'frank', { follow_default: '1', preset: 'p3-h1' })
+    assert.deepEqual(store.presetsOf('frank'), ['p3-h2'])
+    assert.match((await request('GET', '/gate/admin', { cookie: boss })).body, /Preset được chọn/)
+    assert.ok(store.recentAudit(5).some(a => a.event === 'presets_assigned'))
+  })
+
+  it('ticket review: list, proposal with rationale (hideable), approve with edited reply and Q&A doc', async () => {
+    const list = await request('GET', '/gate/admin/tickets', { cookie: boss })
+    assert.equal(list.status, 200)
+    assert.match(list.body, /TICK-101/)
+    assert.match(list.body, /1 chờ duyệt/)
+    const page = (await request('GET', '/gate/admin/tickets?code=TICK-101', { cookie: boss })).body
+    assert.match(page, /Kho thiếu tài liệu/)
+    assert.match(page, /đã tìm học phí 2027/)
+    assert.match(page, /14 triệu đồng\n\nNguồn: hoc-phi.pdf \(tr. 2\)/)
+    assert.doesNotMatch((await request('GET', '/gate/admin/tickets?code=TICK-101&lydo=0', { cookie: boss })).body, /đã tìm học phí 2027/)
+    const token = field(page, 'token')
+    const post = fields => request('POST', '/gate/admin/tickets', { cookie: boss, body: new URLSearchParams({ token, code: 'TICK-101', proposal: '7', ...fields }).toString() })
+    assert.match((await post({ decision: 'approve', reply: '  ' })).body, /không được để trống/)
+    const ok = await post({ decision: 'approve', reply: '14 triệu (đã sửa)', kb: '1' })
+    assert.equal(ok.status, 303)
+    assert.deepEqual(ticketCalls.at(-1), { args: ['decide', '7'], input: { approve: true, reply: '14 triệu (đã sửa)', by: 'boss', kb: true } })
+    assert.ok(store.recentAudit(3).some(a => a.event === 'ticket_decided'))
+    assert.equal((await post({ decision: 'reject', token: 'bad' })).status, 400)
+    assert.match((await request('GET', '/gate/admin/tickets?code=TICK-9', { cookie: boss })).body, /Không tìm thấy phiếu TICK-9/)
+    const frank = cookieOf(await login('frank', 'frank-password'), 'gate_session')
+    assert.equal((await request('GET', '/gate/admin/tickets', { cookie: frank })).status, 403)
   })
 
   it('token plans: assign per user, edit limits, default and system plan; admins unlimited', async () => {

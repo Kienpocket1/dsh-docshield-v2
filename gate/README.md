@@ -29,7 +29,8 @@ Viết theo định dạng dây của DSH 0.1.6-alpha.2. **Mặc định chặn*
 |---|---|
 | Dữ liệu chung (danh mục model, preset, provider…) | Cho qua |
 | Lệnh theo phiên (`session/prompt`, `rename`, `cancel`, `commands/*`, `fileUploads/upload`, `subagents/*`…) | Mọi mã phiên trong tham số phải thuộc thư mục của người đó |
-| `session/create` | Chỉ trong `storage/users/<tên>`, luôn dùng preset `docshield`, không nhận mã phiên của người khác |
+| `session/create` | Chỉ trong `storage/users/<tên>`, preset phải nằm trong danh sách admin cấp (không thì `docshield`), không nhận mã phiên của người khác |
+| `agentPresets/list`, `agentPresets/select` | Ô chọn preset chỉ hiện preset admin cấp (`/gate/admin`, cột "Preset được chọn"); đổi preset chỉ cho phiên của mình |
 | `session/list`, `session/search`, `workspace/follow`, `session/control`, `$events` | Lọc kết quả, chỉ còn phiên/workspace của người đó |
 | `session/follow` | Chỉ phiên của mình; kiểm tra lại thư mục trong snapshot |
 | Duyệt công cụ (`$events/result`) | Chỉ trả lời được yêu cầu duyệt đã gửi cho chính người đó |
@@ -41,9 +42,9 @@ Gate tự biết phiên nào ở thư mục nào bằng cách hỏi `session/lis
 ## Chạy
 
 ```
-E:\Deepseek_Harness\start-gate.cmd
+start.cmd        (ở gốc repo)
 ```
-Mở http://127.0.0.1:3444. Dữ liệu chạy nằm ngoài repo, trong `E:\Deepseek_Harness\runtime\`:
+Mở http://127.0.0.1:3454. Dữ liệu chạy nằm trong các volume Docker `congty-*`. Bảng dưới là bố cục cũ khi chạy thẳng trên Windows:
 
 | Thư mục | Nội dung |
 |---|---|
@@ -56,9 +57,9 @@ Mở http://127.0.0.1:3444. Dữ liệu chạy nằm ngoài repo, trong `E:\Deep
 
 | Cách | Lệnh | Ai vào được |
 |---|---|---|
-| Chỉ máy này (mặc định) | `start-gate.cmd` | http://127.0.0.1:3444 |
-| Cùng mạng LAN | `start-gate.cmd lan`, mở cổng 3444 trên tường lửa (loại mạng Private) | `http://<IP máy này>:3444`; HTTP không mã hóa |
-| Qua internet bằng link | `start-gate.cmd tunnel` (cần cài `cloudflared`) | `https://….trycloudflare.com`; có HTTPS, không cần mở cổng |
+| Chỉ máy này (mặc định) | `start.cmd` | http://127.0.0.1:3454 |
+| Cùng mạng LAN | `start.cmd lan`, mở cổng 3454 trên tường lửa (loại mạng Private) | `http://<IP máy này>:3454`; HTTP không mã hóa |
+| Qua internet bằng link | `start.cmd tunnel` (cần cài `cloudflared`) | `https://….trycloudflare.com`; có HTTPS, không cần mở cổng |
 
 Chế độ tunnel bật `GATE_TRUST_PROXY=1`. Khi đó gate lấy IP thật từ header `CF-Connecting-IP`, nên việc chống dò mật khẩu và giới hạn đăng ký tính theo từng người, không gộp chung một IP. Header này chỉ được tin khi request đến từ chính máy này. Cookie cũng được gắn cờ `Secure`. Link quick tunnel đổi mỗi lần chạy; tắt cửa sổ tunnel là ngắt truy cập từ ngoài.
 
@@ -83,7 +84,7 @@ Khi chưa có tài khoản nào, cửa sổ đang chạy in ra một **mã thi�
 
 ## Tài khoản (dòng lệnh)
 
-Chạy trong thư mục này, với `GATE_VAR_DIR=E:\Deepseek_Harness\runtime\gate-var`:
+Chạy trong thư mục này, với `GATE_VAR_DIR=<thư mục gate-var>`:
 
 | Lệnh | Việc |
 |---|---|

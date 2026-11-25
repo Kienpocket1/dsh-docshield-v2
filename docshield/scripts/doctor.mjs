@@ -8,7 +8,7 @@ import { dshHome, pathKey, PRESET_IDS, storageRoot, USER_ID_PATTERN } from './li
 
 // Presets shipped inside DSH itself (not under <DSH_HOME>/.agent-presets).
 const SHIPPED_PRESETS = ['standard', 'minimal', 'ptc', 'cordis']
-const dbPath = process.env.DSHPW_DB ?? 'E:/Deepseek_Harness/spike-dshpw/dsh-passwords/data/platform.db'
+const dbPath = process.env.DSHPW_DB ?? ''
 if (!existsSync(dbPath)) {
   console.error(`Không thấy database dsh-passwords: ${dbPath} (đặt DSHPW_DB)`)
   process.exit(2)

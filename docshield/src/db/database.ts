@@ -10,7 +10,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { getLoadablePath } from 'sqlite-vec'
 
 export const EMBEDDING_DIMS = 1024
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 export function openDatabase(file: string): DatabaseSync {
   if (file !== ':memory:') mkdirSync(path.dirname(file), { recursive: true })
@@ -35,6 +35,7 @@ function migrate(db: DatabaseSync): void {
     if (current < 2) migrateV2(db)
     if (current < 3) migrateV3(db)
     if (current < 4) migrateV4(db)
+    if (current < 5) migrateV5(db)
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     db.exec('COMMIT')
   } catch (error) {
@@ -157,6 +158,33 @@ function migrateV1(db: DatabaseSync): void {
 }
 
 /** Run `fn` inside BEGIN IMMEDIATE … COMMIT, rolling back on any throw. */
+/**
+ * v5: proposals from the ticket agent (Project 3). Admin-only: no user tool reads this table, and
+ * a draft never touches tickets.admin_reply (which the asker sees) until an admin approves it.
+ */
+function migrateV5(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ticket_proposals (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      ticket_id   INTEGER NOT NULL REFERENCES tickets(id),
+      config      TEXT    NOT NULL,
+      model       TEXT,
+      session_id  TEXT,
+      payload     TEXT,
+      raw         TEXT    NOT NULL,
+      tokens      INTEGER,
+      seconds     REAL,
+      status      TEXT    NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved', 'rejected')),
+      final_reply TEXT,
+      kb_file     TEXT,
+      decided_by  TEXT,
+      decided_at  TEXT,
+      created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_proposals_ticket ON ticket_proposals (ticket_id, id);
+  `)
+}
+
 export function transaction<T>(db: DatabaseSync, fn: () => T): T {
   db.exec('BEGIN IMMEDIATE')
   try {

@@ -14,7 +14,7 @@ import { validateUsername } from './store.mjs'
 import { readEgressLog } from './egress-log.mjs'
 import { ADMIN, SYSTEM, usageOf } from './quota.mjs'
 import {
-  renderAdmin, renderBar, renderLogin, renderNotice, renderPassword, renderRegister, renderSetup, renderUsage,
+  renderAdmin, renderBar, renderLogin, renderNotice, renderPassword, renderRegister, renderSetup, renderTicket, renderTickets, renderUsage,
 } from './views.mjs'
 
 const MAX_FORM_BYTES = 4096
@@ -50,7 +50,7 @@ const PAGE_HEADERS = {
  *   address, so only tunnel-forwarded addresses count toward the IP-wide lockout
  * @param {(msg: string) => void} [deps.log]
  */
-export function createGate({ store, secret, upstream, filter, setupKey, trustProxy = false, trustedPeers = [], calibrationToken, egressLog, sharedDirectAddr = false, log = () => {} }) {
+export function createGate({ store, secret, upstream, filter, setupKey, presetCatalog = async () => [], tickets, trustProxy = false, trustedPeers = [], calibrationToken, egressLog, sharedDirectAddr = false, log = () => {} }) {
   const setupOpen = () => setupKey !== undefined && store.countUsers() === 0
   const sessionValue = req => parseCookies(req.headers.cookie)[SESSION_COOKIE]
   const currentUser = req => verifySession(secret, sessionValue(req), name => store.getUser(name))
@@ -106,6 +106,7 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
     '/gate/logout': { open: true, POST: logout },
     '/gate/password': { GET: passwordPage, POST: passwordSubmit },
     '/gate/admin': { admin: true, GET: adminPage, POST: adminSubmit },
+    '/gate/admin/tickets': { admin: true, GET: ticketsPage, POST: ticketsSubmit },
     '/gate/usage': { GET: usagePage },
   }
 
@@ -322,8 +323,10 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
     res.end()
   }
 
-  function adminPage(req, res, url, user, extra = {}) {
+  async function adminPage(req, res, url, user, extra = {}) {
+    const presets = await presetCatalog().catch(err => (log(`agentPresets/list: ${err.message}`), []))
     page(res, extra.status ?? 200, renderAdmin({
+      presets: { catalog: presets, defaults: store.getSetting('default_presets', undefined) },
       token: tokenFor(req),
       me: user,
       users: store.listUsers(),
@@ -339,6 +342,41 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
       ok: url?.searchParams.get('ok') ?? undefined,
       ...extra,
     }))
+  }
+
+  /** Support tickets with the ticket agent's proposals (Project 3); ?code=TICK-n opens one, &lydo=0 hides the rationale. */
+  async function ticketsPage(req, res, url, user, extra = {}) {
+    if (tickets === undefined) return page(res, 503, renderNotice('Phiếu hỗ trợ', 'Trang duyệt phiếu không khả dụng ở chế độ chạy này (thiếu GATE_TICKETS_CLI).', { href: '/gate/admin', label: 'Về trang quản trị' }))
+    const code = extra.code ?? url?.searchParams.get('code') ?? undefined
+    const status = url?.searchParams.get('status') ?? undefined
+    const common = { token: tokenFor(req), me: user, ok: url?.searchParams.get('ok') ?? undefined, error: extra.error, showRationale: url?.searchParams.get('lydo') !== '0' }
+    try {
+      if (code) return page(res, extra.status ?? 200, renderTicket({ ...common, ...(await tickets(['get', code])) }))
+      const list = await tickets(status && ['open', 'in_progress', 'resolved', 'rejected'].includes(status) ? ['list', '--status', status] : ['list'])
+      return page(res, extra.status ?? 200, renderTickets({ ...common, status, tickets: list }))
+    } catch (err) {
+      return page(res, 400, renderNotice('Phiếu hỗ trợ', err.message, { href: '/gate/admin/tickets', label: 'Về danh sách phiếu' }))
+    }
+  }
+
+  async function ticketsSubmit(req, res, _url, me) {
+    const form = await readForm(req)
+    const code = String(form.get('code') ?? '')
+    const fail = error => ticketsPage(req, res, null, me, { code, error, status: 400 })
+    if (!sameToken(form.get('token'), tokenFor(req))) return fail('Phiên đã hết hạn, hãy tải lại trang.')
+    if (tickets === undefined) return fail('Trang duyệt phiếu không khả dụng.')
+    const decision = String(form.get('decision') ?? '')
+    if (decision !== 'approve' && decision !== 'reject') return fail('Thao tác không hợp lệ.')
+    const approve = decision === 'approve'
+    const reply = String(form.get(approve ? 'reply' : 'reason') ?? '')
+    try {
+      await tickets(['decide', String(form.get('proposal') ?? '')], { approve, reply, by: me.username, kb: approve && form.get('kb') === '1' })
+    } catch (err) {
+      return fail(err.message)
+    }
+    store.audit('ticket_decided', { username: me.username, ip: ipOf(req), detail: `${code}: ${approve ? 'duyệt' : 'từ chối'}${approve && form.get('kb') === '1' ? ' + thêm vào kho' : ''}` })
+    res.writeHead(303, { location: `/gate/admin/tickets?code=${encodeURIComponent(code)}&ok=${approve ? 'ticket_approved' : 'ticket_rejected'}` })
+    res.end()
   }
 
   async function adminSubmit(req, res, _url, me) {
@@ -374,6 +412,15 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
       store.setSetting(isDefault ? 'default_plan' : 'system_plan', plan)
       store.audit('plan_assigned', { username: me.username, ip, detail: `${isDefault ? 'gói mặc định' : SYSTEM}: ${plan || 'theo mặc định'}` })
       return done('plan_saved')
+    }
+
+    // Ticked presets (USER_PRESET is always allowed); "follow default" clears the user's own list.
+    const ticked = form.getAll('preset').map(String).filter(id => /^[a-z0-9][a-z0-9._-]{0,63}$/i.test(id))
+    const followDefault = form.get('follow_default') === '1'
+    if (action === 'set_default_presets') {
+      store.setSetting('default_presets', ticked.join(','))
+      store.audit('presets_assigned', { username: me.username, ip, detail: `mặc định: ${ticked.join(', ') || '(chỉ preset chuẩn)'}` })
+      return done('presets_saved')
     }
 
     const target = store.getUser(username)
@@ -412,6 +459,10 @@ export function createGate({ store, secret, upstream, filter, setupKey, trustPro
           store.setPlan(target.username, plan || null)
           store.audit('plan_assigned', { username: target.username, ip, detail: `${plan || 'theo mặc định'} bởi ${me.username}` })
           return done('plan_saved')
+        case 'set_presets':
+          store.setPresets(target.username, followDefault ? null : ticked)
+          store.audit('presets_assigned', { username: target.username, ip, detail: `${followDefault ? 'theo mặc định' : ticked.join(', ') || '(chỉ preset chuẩn)'} bởi ${me.username}` })
+          return done('presets_saved')
         case 'reset_password': {
           if (isSelf) return fail('Hãy dùng trang Đổi mật khẩu cho tài khoản của bạn.')
           const temp = tempPassword()

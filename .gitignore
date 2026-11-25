@@ -15,3 +15,10 @@ test/attack/last-run.md
 # Per-installation settings (start.cmd reads it; copy local.example.cmd)
 local.cmd
 .ua/
+
+project3/.p3agent-*
+project3/.p3admin-*
+project3/worker-state.json
+project3/runs/
+__pycache__/
+container/skills/remove-ai-marks/

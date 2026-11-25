@@ -1,0 +1,3 @@
+Sinh viên ngành Khoa học máy tính (chương trình chuẩn) đăng ký 20 tín chỉ học phí ở học kỳ 1 năm học 2026-2027 phải đóng **14.000.000 đồng** (20 tín chỉ × 700.000 đồng/tín chỉ). [Nguồn: 03-hoc-phi-2026-2027.pdf · tr.3 · Điều 2; 03-hoc-phi-2026-2027.pdf · tr.1 · Điều 1]
+
+{'session': 'session-cf59c65d-5311-4eed-a412-76b4caeb4cd8', 'preset': 'p3-h1', 'model': 'qwen3:8b', 'prompt_tokens': 63475, 'completion_tokens': 3836, 'llm_calls': 7, 'llm_ms': 1722456, 'tool_ms': 960, 'total_tokens': 67311, 'seconds': 1725.4}

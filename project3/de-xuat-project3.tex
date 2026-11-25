@@ -1,0 +1,378 @@
+% Đề xuất Project 3 --- biên dịch được bằng pdfLaTeX (mặc định Overleaf) hoặc XeLaTeX/LuaLaTeX.
+% Các chỗ cần điền đánh dấu bằng \dien{...} (hiện màu đỏ khi biên dịch).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T5]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{lmodern}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage[vietnamese]{babel}
+
+\usepackage[a4paper,margin=2.2cm]{geometry}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,calc}
+\usepackage{caption}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{accent}{HTML}{0F766E}
+\definecolor{ink}{HTML}{1F2937}
+\definecolor{muted}{HTML}{6B7280}
+\definecolor{boxbg}{HTML}{F3F4F6}
+\definecolor{newbg}{HTML}{ECFDF5}
+\definecolor{oldbg}{HTML}{F3F4F6}
+\definecolor{extbg}{HTML}{FEF3C7}
+
+\setlist{itemsep=2pt,topsep=4pt}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+\renewcommand{\arraystretch}{1.25}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\color{muted} Project 3 --- Đề xuất đề tài}
+\rhead{\small\color{muted} \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\dien}[1]{\textcolor{red}{[#1]}}
+\newcommand{\keybox}[2]{%
+  \par\noindent\colorbox{boxbg}{\parbox{\dimexpr\linewidth-2\fboxsep}{\vspace{3pt}\textbf{#1}\par\vspace{2pt}#2\vspace{3pt}}}\par}
+
+\begin{document}
+
+\begin{center}
+  {\small\color{muted} ĐẠI HỌC BÁCH KHOA HÀ NỘI --- TRƯỜNG CÔNG NGHỆ THÔNG TIN VÀ TRUYỀN THÔNG}\\[2pt]
+  {\small\color{muted} KHOA KHOA HỌC MÁY TÍNH}\\[10pt]
+  {\Large\bfseries\color{ink} ĐỀ XUẤT ĐỀ TÀI PROJECT 3}\\[8pt]
+  {\large\bfseries Agent tự bồi đắp kho tri thức cho chatbot nội bộ trên nền DeepSeek Harness:\\
+  xử lý câu hỏi ngoài khả năng của RAG, tìm nguồn ngoài có kiểm duyệt\\ và giải thích lựa chọn}\\[4pt]
+  {\normalsize\itshape A Self-Enriching Knowledge Agent for Enterprise Chatbots on DeepSeek Harness}
+\end{center}
+\vspace{6pt}
+
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+  \toprule
+  Sinh viên thực hiện & \dien{Họ và tên} --- MSSV \dien{...} --- Lớp \dien{...} \\
+  Giảng viên hướng dẫn & \dien{Học hàm, học vị, họ và tên} \\
+  Thời gian & 12 tuần, từ \dien{ngày bắt đầu} đến \dien{ngày kết thúc}; báo cáo tiến độ 2 tuần một lần (6 mốc) \\
+  Hướng nghiên cứu & Agentic AI, agentic RAG, thiết kế harness cho LLM agent, con người trong vòng lặp \\
+  \bottomrule
+\end{tabularx}
+
+\vspace{6pt}
+\keybox{Tóm tắt}{%
+Chatbot nội bộ dạng RAG chỉ trả lời được những gì có sẵn trong kho tài liệu. Câu hỏi nào trượt sẽ thành
+phiếu hỗ trợ (ticket) và quản trị viên phải xử lý tay. Đề tài xây dựng một \textbf{agent} trên DeepSeek
+Harness (DSH) nhận chính các ticket đó: \textbf{chẩn đoán} vì sao chatbot trượt, \textbf{tự tìm lại} trong
+kho nội bộ (kể cả tính toán bằng mã trong sandbox), \textbf{tìm nguồn ngoài} qua một agent con bị giới hạn
+khi kho thật sự thiếu, rồi soạn \textbf{phiếu đề xuất} kèm \textbf{lý do chọn nguồn} để quản trị viên duyệt.
+Chỉ sau khi được duyệt, câu trả lời mới gửi cho người hỏi và kho tri thức mới được cập nhật, nhờ đó
+chatbot tự trả lời được các câu tương tự về sau.
+\begin{itemize}[leftmargin=14pt]
+  \item \textbf{Sản phẩm:} agent xử lý ticket (plugin và preset DSH), agent con tìm nguồn ngoài, giao diện
+        quản trị viên duyệt đề xuất và cập nhật kho.
+  \item \textbf{Nghiên cứu:} bộ câu hỏi tiếng Việt có đáp án và nhãn nguyên nhân trượt, web giả lập có nguồn
+        xấu, so sánh 5 cấu hình harness H0--H4, và thí nghiệm đánh giá tác dụng của phiếu lý do đối với
+        người duyệt.
+  \item \textbf{Nền tảng kế thừa:} hệ thống đa người dùng có sandbox mà sinh viên đã xây dựng trước
+        (mục~\ref{sec:nen-tang}). Toàn bộ 12 tuần dành cho agent, dữ liệu và đánh giá.
+\end{itemize}}
+
+% ================================================================ 1
+\section{Đặt vấn đề}
+
+\subsection{Chatbot RAG nội bộ và giới hạn của nó}
+Sinh viên đã xây dựng DocShield, một chatbot hỏi đáp tài liệu nội bộ theo kiểu RAG~\cite{rag} có chống ảo
+giác: tìm kiếm kết hợp vector (bge-m3~\cite{bgem3}) và BM25, bắt buộc trích dẫn, mã nguồn (không phải mô
+hình) kiểm tra trích dẫn khớp nguyên văn trước khi hiển thị, và từ chối kèm tạo ticket khi không tìm thấy.
+Cách làm này trả lời tốt câu hỏi có sẵn trong một đoạn tài liệu, nhưng có ba điểm yếu:
+\begin{itemize}
+  \item \textbf{Nhiều ticket thực ra trả lời được.} Câu hỏi cần tổng hợp nhiều tài liệu, cần tính toán, hoặc
+        dùng từ khác với tài liệu, nên tìm kiếm một lượt bị trượt.
+  \item \textbf{Quản trị viên tốn thời gian} cho các việc lặp lại: tự tra, tự trả lời, tự bổ sung tài liệu.
+  \item \textbf{Chatbot không học được gì:} câu hỏi đó lần sau vẫn trượt.
+\end{itemize}
+
+\subsection{Khi nào cần agent}
+RAG một lượt là đủ khi câu trả lời nằm sẵn trong một đoạn văn. Agent (mô hình gọi công cụ trong vòng lặp
+suy luận và hành động~\cite{react}) chỉ đáng dùng khi câu hỏi cần nhiều bước, ví dụ:
+\begin{itemize}
+  \item \textbf{Tổng hợp nhiều tài liệu:} ``Muốn chuyển ngành thì cần điều kiện gì và mất bao nhiêu học phí?''
+  \item \textbf{Tính toán trên bảng:} ``Với điểm này em có đủ học bổng loại Giỏi không?''
+  \item \textbf{Đối chiếu phiên bản:} ``Quy chế mới khác quy chế cũ ở điểm nào?''
+  \item \textbf{Kho thiếu thông tin:} quy định mới của cơ quan cấp trên chưa được đưa vào kho.
+\end{itemize}
+Vì agent đắt và khó kiểm soát hơn, đề tài dùng \textbf{kiến trúc lai}~\cite{anthropic-agents}: luồng RAG
+cố định (workflow) vẫn trả lời câu dễ, nhanh và rẻ; agent chỉ vào cuộc khi workflow trượt.
+
+\subsection{Vấn đề mở}
+Cho agent tự do hơn, đặc biệt cho phép lấy dữ liệu từ bên ngoài, đặt ra ba câu hỏi:
+\begin{enumerate}
+  \item Agent trả lời được thêm bao nhiêu câu, và \textbf{có làm tăng tỉ lệ bịa} không? Chống ảo giác vốn
+        là mục tiêu của hệ thống, nên trở thành ràng buộc phải giữ.
+  \item Những \textbf{cơ chế của harness} (chạy mã, lập kế hoạch, agent con, workflow lập trình được) đóng
+        góp bao nhiêu, và tốn thêm bao nhiêu?
+  \item Nguồn ngoài có thể kém tin cậy, đã cũ, hoặc chứa lệnh ẩn (prompt injection gián
+        tiếp~\cite{greshake}). Làm sao để \textbf{người duyệt bắt được đề xuất sai} mà không phải tự
+        kiểm tra lại từ đầu?
+\end{enumerate}
+
+% ================================================================ 2
+\section{Mục tiêu và câu hỏi nghiên cứu}
+
+\subsection{Mục tiêu sản phẩm}
+\begin{enumerate}[label=P\arabic*.]
+  \item Agent xử lý ticket: chẩn đoán nguyên nhân trượt, tự tìm lại trong kho nội bộ, tính toán bằng mã
+        trong sandbox.
+  \item Agent con tìm nguồn ngoài có giới hạn: có internet nhưng không thấy dữ liệu nội bộ, chỉ truy cập tên
+        miền được phép, lưu bản chụp từng nguồn.
+  \item Phiếu đề xuất cho quản trị viên: câu trả lời có trích dẫn kiểm chứng, đề xuất cập nhật kho, và
+        \textbf{phiếu lý do chọn nguồn}.
+  \item Giao diện duyệt: duyệt, sửa hoặc từ chối; khi duyệt thì trả lời người hỏi và cập nhật kho.
+\end{enumerate}
+
+\subsection{Câu hỏi nghiên cứu}
+\begin{description}[leftmargin=14pt,style=nextline]
+  \item[RQ1 --- Hiệu quả.] Kiến trúc lai trả lời đúng được thêm bao nhiêu câu so với RAG thuần, tốn thêm bao
+        nhiêu token và thời gian, và tỉ lệ bịa có tăng không?
+  \item[RQ2 --- Thiết kế harness.] Mỗi cơ chế của DSH (chạy mã, plan mode, subagent, workflow) đóng góp bao
+        nhiêu vào độ chính xác? Loại câu hỏi nào nên bật cơ chế nào?
+  \item[RQ3 --- Con người trong vòng lặp.] Phiếu lý do chọn nguồn có giúp người duyệt phát hiện đề xuất sai
+        (nguồn kém, số liệu cũ, trang có lệnh ẩn) \textbf{đúng hơn và nhanh hơn} không?
+\end{description}
+
+% ================================================================ 3
+\section{Nền tảng kế thừa và phần việc mới}\label{sec:nen-tang}
+
+Đề tài không xây lại hạ tầng. Các thành phần dưới đây đã được sinh viên xây dựng và kiểm thử trước khi bắt
+đầu Project 3 (134 test tự động đều đạt); chúng chỉ được dùng lại.
+
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.47\linewidth}Y@{}}
+\toprule
+\textbf{Đã có (kế thừa)} & \textbf{Làm mới trong Project 3} \\
+\midrule
+\begin{itemize}[leftmargin=12pt,nosep]
+  \item dsh-gate: đăng nhập, phiên, quản trị, mỗi người dùng một DSH
+  \item DocShield: RAG lai, trích dẫn được mã kiểm tra, luồng ticket
+  \item Sandbox S0--S4: container riêng, DB tách ra dịch vụ, proxy giữ API key, tường lửa, Landlock
+  \item Agent có shell, đọc/ghi file, subagent trong sandbox
+\end{itemize}
+&
+\begin{itemize}[leftmargin=12pt,nosep]
+  \item Agent xử lý ticket và các công cụ chẩn đoán
+  \item Agent con tìm nguồn ngoài và proxy web có kiểm soát
+  \item Phiếu đề xuất, phiếu lý do, giao diện duyệt
+  \item Bộ dữ liệu, web giả lập, bộ chấm tự động
+  \item Thí nghiệm H0--H4 và thí nghiệm người duyệt
+\end{itemize} \\
+\bottomrule
+\end{tabularx}
+
+% ================================================================ 4
+\section{Phương pháp}
+
+\subsection{Kiến trúc lai}
+
+\begin{center}
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners=3pt, align=center, font=\small, inner sep=5pt, text width=3.1cm},
+  arr/.style={-{Stealth[length=2.2mm]}, thick, color=muted},
+  lbl/.style={font=\scriptsize, color=muted}]
+  \node[box, fill=boxbg] (u) {Người dùng hỏi};
+  \node[box, fill=oldbg, right=0.9cm of u] (w) {\textbf{Workflow RAG}\\(đã có)};
+  \node[box, fill=boxbg, right=0.9cm of w] (ok) {Trả lời có\\trích dẫn};
+  \node[box, fill=newbg, below=0.9cm of w] (a) {\textbf{Agent xử lý ticket}\\chẩn đoán, tìm lại, chạy mã};
+  \node[box, fill=oldbg, left=0.9cm of a] (kb) {Kho nội bộ\\(DocShield)};
+  \node[box, fill=extbg, right=0.9cm of a] (ext) {\textbf{Agent con}\\nguồn ngoài có giới hạn};
+  \node[box, fill=newbg, below=0.9cm of a] (p) {\textbf{Phiếu đề xuất}\\+ lý do chọn nguồn};
+  \node[box, fill=boxbg, below=0.9cm of p] (ad) {\textbf{Quản trị viên duyệt}};
+  \node[box, fill=boxbg, left=0.9cm of ad] (ans) {Trả lời người hỏi};
+  \node[box, fill=boxbg, right=0.9cm of ad] (up) {Cập nhật kho};
+  \draw[arr] (u) -- (w);
+  \draw[arr] (w) -- node[above, lbl]{tìm thấy} (ok);
+  \draw[arr] (w) -- node[right, lbl]{trượt $\rightarrow$ ticket} (a);
+  \draw[arr, <->] (a) -- (kb);
+  \draw[arr, <->] (a) -- node[above, lbl]{khi kho thiếu} (ext);
+  \draw[arr] (a) -- (p);
+  \draw[arr] (p) -- (ad);
+  \draw[arr] (ad) -- (ans);
+  \draw[arr] (ad) -- (up);
+  \draw[arr, dashed] (up.north) |- ($(kb.south)+(0,-0.35)$) -- (kb.south);
+\end{tikzpicture}
+\end{center}
+
+\subsection{Quy trình của agent}
+\begin{enumerate}
+  \item \textbf{Chẩn đoán} vì sao workflow trượt, gán một trong các nhãn: tìm kiếm trượt (tài liệu có nhưng
+        dùng từ khác), cần nhiều bước (tổng hợp, tính toán), tài liệu thiếu, tài liệu cũ hoặc mâu thuẫn,
+        câu hỏi mơ hồ.
+  \item \textbf{Tự tìm lại trong kho nội bộ:} viết lại câu hỏi, tra nhiều tài liệu, đọc bảng và tính toán
+        bằng mã trong sandbox. Mọi trích dẫn vẫn phải qua bộ kiểm tra khớp nguyên văn của DocShield.
+  \item \textbf{Tìm nguồn ngoài khi kho thiếu,} bằng cách giao việc cho agent con (mục~\ref{sec:an-toan}).
+  \item \textbf{Soạn phiếu đề xuất} gồm: câu trả lời có trích dẫn, hoặc kết luận ``tài liệu thật sự không
+        có''; đề xuất cập nhật kho (thêm tài liệu, đánh dấu tài liệu cũ, thêm cách hỏi khác cho đoạn đã có);
+        và phiếu lý do chọn nguồn.
+  \item \textbf{Quản trị viên duyệt, sửa hoặc từ chối.} Không có gì được gửi cho người dùng hay ghi vào kho
+        trước bước này.
+\end{enumerate}
+
+\subsection{Phiếu lý do chọn nguồn}
+Với mỗi nguồn ngoài được đề xuất, agent phải điền một phiếu có cấu trúc cố định:
+\begin{itemize}
+  \item \textbf{Lấp chỗ trống nào:} câu hỏi hoặc phần kho đang thiếu mà nguồn này bổ sung.
+  \item \textbf{Độ tin cậy:} loại nguồn (văn bản chính thức, trang tổ chức, diễn đàn\ldots) và lý do.
+  \item \textbf{Độ mới:} ngày ban hành hoặc cập nhật, và có văn bản nào thay thế không.
+  \item \textbf{Các nguồn đã xem nhưng loại,} kèm lý do loại.
+  \item \textbf{Xung đột với kho hiện có:} đoạn nào trong kho nói khác, và vì sao đề xuất ưu tiên nguồn mới.
+\end{itemize}
+Phiếu giúp người duyệt kiểm tra lập luận của agent thay vì phải tự tìm kiếm lại. RQ3 đo xem điều này có
+đúng không.
+
+\subsection{An toàn khi lấy dữ liệu ngoài}\label{sec:an-toan}
+Tận dụng sandbox sẵn có:
+\begin{itemize}
+  \item \textbf{Tách quyền:} agent con có internet nhưng chạy trong container riêng, \textbf{không thấy kho nội
+        bộ và dữ liệu người dùng}; agent chính thấy kho nhưng không có internet. Nhờ vậy một trang web độc hại
+        không thể khiến agent làm lộ dữ liệu nội bộ.
+  \item \textbf{Đi qua proxy web:} chỉ truy cập tên miền trong danh sách được phép; mọi trang được lưu bản chụp
+        để người duyệt xem lại đúng nội dung agent đã đọc.
+  \item \textbf{Nội dung ngoài là dữ liệu, không phải lệnh:} agent con chỉ trả về trích đoạn kèm địa chỉ; web
+        giả lập có cài lệnh ẩn để đo tỉ lệ agent bị lừa.
+\end{itemize}
+
+% ================================================================ 5
+\section{Thiết kế thí nghiệm}
+
+\subsection{Dữ liệu}
+\begin{itemize}
+  \item \textbf{Kho tài liệu:} tài liệu nội bộ tiếng Việt dạng quy chế, quy định, biểu mẫu \dien{nguồn cụ thể}.
+  \item \textbf{Bộ câu hỏi:} 150--200 câu, mỗi câu có đáp án, đoạn bằng chứng và nhãn ``vì sao trượt''. Một phần
+        lấy từ log ticket thật của DocShield, phần còn lại tự xây dựng để đủ các nhãn. Chia tập dev và tập test;
+        tập test chỉ chạy một lần ở cuối.
+  \item \textbf{Web giả lập:} gồm trang chính thức, trang kém tin cậy, trang đã cũ và trang có lệnh ẩn, để kết
+        quả lặp lại được và đo được khả năng bị nguồn xấu đánh lừa.
+\end{itemize}
+
+\subsection{Các cấu hình so sánh}
+\begin{tabularx}{\linewidth}{@{}lY@{}}
+\toprule
+\textbf{Cấu hình} & \textbf{Mô tả} \\
+\midrule
+H0 & RAG thuần (DocShield hiện tại): mốc so sánh \\
+H1 & Agent + tìm lại nhiều lượt + chạy mã trong sandbox \\
+H2 & H1 + plan mode (lập kế hoạch trước khi làm) \\
+H3 & H2 + subagent (chia việc cho agent con trong kho nội bộ) \\
+H4 & H3 + agent con tìm nguồn ngoài có kiểm duyệt \\
+\bottomrule
+\end{tabularx}
+
+Mỗi câu chạy 3--5 lần cho mỗi cấu hình, báo cáo trung bình và độ lệch để giảm ảnh hưởng của tính ngẫu
+nhiên. Thí nghiệm RQ3: người duyệt \dien{số người} xem cùng một tập phiếu đề xuất (có trộn đề xuất sai), một
+nửa có phiếu lý do và một nửa không, đổi chéo giữa người duyệt.
+
+\subsection{Chỉ số}
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.34\linewidth}Y@{}}
+\toprule
+\textbf{Chỉ số} & \textbf{Cách đo} \\
+\midrule
+Tỉ lệ trả lời đúng (RQ1, RQ2) & So với đáp án; chấm tự động kết hợp LLM làm giám khảo~\cite{llmjudge}, kiểm tra tay một mẫu \\
+Tỉ lệ bịa (RQ1) & Tỉ lệ câu có trích dẫn không kiểm chứng được hoặc khẳng định không có trong nguồn \\
+Độ chính xác chẩn đoán & Nhãn agent gán so với nhãn ``vì sao trượt'' \\
+Tỉ lệ bị nguồn xấu lừa & Tỉ lệ đề xuất dùng trang kém tin cậy, đã cũ hoặc làm theo lệnh ẩn \\
+Hiệu quả bồi đắp & Sau khi cập nhật kho, tỉ lệ câu tương tự mà H0 tự trả lời được \\
+Người duyệt (RQ3) & Tỉ lệ phát hiện đề xuất sai, thời gian ra quyết định \\
+Chi phí & Token, số lượt gọi công cụ, thời gian mỗi ticket \\
+\bottomrule
+\end{tabularx}
+
+% ================================================================ 6
+\section{Phạm vi, giới hạn và rủi ro}
+
+\textbf{Trong phạm vi:} tài liệu nội bộ tiếng Việt; bộ câu hỏi 150--200 câu; cấu hình H0--H4; web giả lập; luồng
+quản trị viên duyệt.
+
+\textbf{Ngoài phạm vi:} agent tự gửi câu trả lời hoặc tự sửa kho mà không qua duyệt; truy cập internet không
+giới hạn; dữ liệu có cấu trúc (cơ sở dữ liệu, bảng số liệu lớn).
+
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.32\linewidth}Y@{}}
+\toprule
+\textbf{Rủi ro} & \textbf{Cách giảm} \\
+\midrule
+Bộ câu hỏi nhỏ, thiên lệch & Cân bằng theo nhãn; báo cáo kết quả theo từng nhãn; tập test tách riêng \\
+Ít người duyệt cho RQ3 & Thiết kế đổi chéo; bổ sung phân tích định tính \\
+Chi phí token cao khi chạy lặp & Chạy tập dev nhỏ trước; dùng mô hình rẻ cho bộ chấm \\
+Web giả lập khác web thật & Dựng từ bản chụp trang thật; thử thêm một phần nhỏ trên web thật có danh sách tên miền \\
+DSH còn là bản alpha & Cố định phiên bản trong image; ghi lại phiên bản trong mọi kết quả \\
+\bottomrule
+\end{tabularx}
+
+% ================================================================ 7
+\section{Kế hoạch thực hiện và các mốc báo cáo}
+
+\begin{tabularx}{\linewidth}{@{}c c Y >{\raggedright\arraybackslash}p{0.27\linewidth}@{}}
+\toprule
+\textbf{Mốc} & \textbf{Tuần} & \textbf{Nội dung} & \textbf{Demo / minh chứng} \\
+\midrule
+1 & 1--2 & Tổng quan (agentic RAG~\cite{agentic-rag-survey}, Self-RAG~\cite{selfrag}, CRAG~\cite{crag},
+ReAct, Reflexion~\cite{reflexion}, prompt injection); chốt RQ; kiến trúc; thu thập tài liệu &
+Kiến trúc + phân loại các kiểu trượt từ log thật của DocShield \\
+2 & 3--4 & Bộ câu hỏi có đáp án, web giả lập, bộ chấm tự động; chạy H0 & Bảng số liệu mốc so sánh \\
+3 & 5--6 & Agent v1: chẩn đoán, tìm lại, chạy mã; chạy H1--H3 trên tập dev & Demo agent xử lý một ticket khó \\
+4 & 7--8 & Agent con tìm nguồn ngoài (proxy, danh sách tên miền, bản chụp); phiếu lý do; chạy H4 &
+Demo phiếu đề xuất có nguồn ngoài \\
+5 & 9--10 & Giao diện duyệt, cập nhật kho, chạy lại câu cũ; thí nghiệm RQ3; chạy tập test & Bảng kết quả chính \\
+6 & 11--12 & Phân tích lỗi và chi phí; báo cáo, slide, video & Nộp \\
+\bottomrule
+\end{tabularx}
+
+% ================================================================ 8
+\section{Sản phẩm bàn giao}
+\begin{enumerate}
+  \item Agent xử lý ticket và agent con tìm nguồn ngoài (plugin và preset DSH), tích hợp với DocShield và gate.
+  \item Giao diện quản trị viên duyệt đề xuất và cập nhật kho.
+  \item Bộ câu hỏi tiếng Việt có nhãn, web giả lập, bộ đánh giá tự động.
+  \item Báo cáo kết quả H0--H4 và RQ3, kèm khuyến nghị cấu hình harness cho từng loại câu hỏi.
+  \item Mã nguồn, hướng dẫn chạy lại thí nghiệm, slide và video demo.
+\end{enumerate}
+
+% ================================================================ 9
+\section{Hướng phát triển thành đồ án tốt nghiệp}
+Project 3 trả lời câu hỏi ``agent làm được tới đâu và cần người duyệt ra sao''. Đồ án tốt nghiệp dự kiến đi
+tiếp theo hướng \textbf{agent học dần từ quyết định của quản trị viên}, nối thẳng từ RQ3:
+\begin{itemize}
+  \item Lưu các lần duyệt và từ chối làm \textbf{bộ nhớ kinh nghiệm}, dùng để học \textbf{chính sách chọn
+        nguồn} (nguồn nào hay bị từ chối, vì sao).
+  \item \textbf{Giảm dần việc của người duyệt:} đề xuất đủ tin cậy thì tự áp dụng có kiểm soát và có thể hoàn
+        tác; đo khi nào tự động hóa là an toàn.
+  \item \textbf{Giữ kho tri thức ``sống'':} tự phát hiện tài liệu hết hạn và mâu thuẫn.
+\end{itemize}
+Nếu kết quả Project 3 thiên về sản phẩm hơn, phương án thay thế là mở rộng sang \textbf{nhiều loại nguồn}:
+thêm dữ liệu có cấu trúc qua lớp ngữ nghĩa (semantic layer) và nhiều agent chuyên trách có agent điều phối.
+
+% ================================================================ TLTK
+\begin{thebibliography}{99}\small
+\bibitem{rag} P.~Lewis et al. \emph{Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks}. NeurIPS, 2020.
+\bibitem{react} S.~Yao, J.~Zhao, D.~Yu, N.~Du, I.~Shafran, K.~Narasimhan, Y.~Cao. \emph{ReAct: Synergizing Reasoning and Acting in Language Models}. ICLR, 2023.
+\bibitem{reflexion} N.~Shinn, F.~Cassano, A.~Gopinath, K.~Narasimhan, S.~Yao. \emph{Reflexion: Language Agents with Verbal Reinforcement Learning}. NeurIPS, 2023.
+\bibitem{selfrag} A.~Asai, Z.~Wu, Y.~Wang, A.~Sil, H.~Hajishirzi. \emph{Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection}. ICLR, 2024.
+\bibitem{crag} S.-Q.~Yan, J.-C.~Gu, Y.~Zhu, Z.-H.~Ling. \emph{Corrective Retrieval Augmented Generation}. arXiv:2401.15884, 2024.
+\bibitem{agentic-rag-survey} A.~Singh, A.~Ehtesham, S.~Kumar, T.~T.~Khoei. \emph{Agentic Retrieval-Augmented Generation: A Survey on Agentic RAG}. arXiv:2501.09136, 2025.
+\bibitem{anthropic-agents} Anthropic. \emph{Building Effective Agents}. Bài viết kỹ thuật, 12/2024.
+\bibitem{greshake} K.~Greshake et al. \emph{Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection}. AISec Workshop, 2023.
+\bibitem{bgem3} J.~Chen et al. \emph{BGE M3-Embedding: Multi-Lingual, Multi-Functionality, Multi-Granularity Text Embeddings Through Self-Knowledge Distillation}. arXiv:2402.03216, 2024.
+\bibitem{llmjudge} L.~Zheng et al. \emph{Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena}. NeurIPS Datasets and Benchmarks, 2023.
+\end{thebibliography}
+
+\end{document}

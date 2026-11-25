@@ -6,7 +6,7 @@
  * containers on the internal network cannot reach it.
  */
 import { spawn } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -30,9 +30,16 @@ for (const name of ['dsh-docshield', 'dsh-gate', 'dsh-exec-router']) {
 // Presets: always the image's (DocShield + harness presets built for this DSH version).
 const presets = path.join(HOME, '.agent-presets')
 mkdirSync(presets, { recursive: true })
-for (const id of ['docshield', 'docshield-admin', 'docshield-harness', 'docshield-admin-harness']) {
+for (const id of ['docshield', 'docshield-admin', 'docshield-harness', 'docshield-admin-harness', 'p3-h1', 'p3-h2', 'p3-h3']) {
   rmSync(path.join(presets, id), { recursive: true, force: true })
   cpSync(path.join(PLUGINS, 'dsh-docshield', 'presets', id), path.join(presets, id), { recursive: true })
+}
+
+// Skills: the image's (container/skills) → $DSH_HOME/skills, found by dsh-skill-filesystem (user-dsh root).
+for (const id of existsSync('/opt/dsh-skills') ? readdirSync('/opt/dsh-skills') : []) {
+  const dst = path.join(HOME, 'skills', id)
+  rmSync(dst, { recursive: true, force: true })
+  cpSync(path.join('/opt/dsh-skills', id), dst, { recursive: true })
 }
 
 // Model settings come from migration (container/migrate.mjs); never invented here.
@@ -46,7 +53,12 @@ if (!/^agent-presets:/m.test(settings)) {
 }
 
 // Gate listens on the bridge-network address only.
-const env = { ...process.env, GATE_USER_PRESET: 'docshield-harness', GATE_ADMIN_REVIEW: '1' }
+const env = { ...process.env, GATE_USER_PRESET: 'docshield-harness', GATE_ADMIN_REVIEW: '1',
+  // Presets a user may pick when the admin assigned none: `docshield` (pure RAG, Project 3 H0). The ticket agents
+  // p3-h1..h3 run on the admin side (project3/worker.py as p3admin).
+  GATE_USER_EXTRA_PRESETS: process.env.GATE_USER_EXTRA_PRESETS ?? 'docshield',
+  // Ticket review page /gate/admin/tickets reads and decides through DocShield's ticket CLI.
+  GATE_TICKETS_CLI: path.join(PLUGINS, 'dsh-docshield', 'dist', 'cli', 'tickets.js') }
 const subnet = process.env.GATE_BIND_SUBNET
 if (subnet) {
   const [base, bits] = subnet.split('/')

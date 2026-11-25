@@ -4,4 +4,4 @@
       name: 'dsh-docshield'
       config:
         # Absolute path to the DocShield storage root (users/<u>, admin, public_docs, .docshield).
-        storageRoot: 'E:/Deepseek_Harness/spike-dshpw/storage'
+        storageRoot: '/data'

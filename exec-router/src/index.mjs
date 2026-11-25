@@ -12,6 +12,7 @@ import { pathToFileURL } from 'node:url'
 import path from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { FileSystem, FsError } from '@deepseek-ai/dsh-fs'
+import { LocalFileSystem } from '@deepseek-ai/dsh-fs-local'
 import { SubprocessRuntime } from '@deepseek-ai/dsh-subprocess'
 import { SandboxProvider } from '@deepseek-ai/dsh-sandbox'
 import { SshFileSystem } from '@deepseek-ai/dsh-fs-ssh'
@@ -128,12 +129,25 @@ export function apply(ctx, config = {}) {
     return typeof c === 'string' && insideZone(zone, c) ? path.posix.normalize(c) : rootsOf(zone)[0]
   }
 
+  /**
+   * Skills installed by the image ($DSH_HOME/skills, see container/dsh-main-start.mjs) are
+   * read from dsh-main itself, read-only, for every session: skill bodies load through ctx.fs.
+   */
+  const SKILLS = path.posix.join(process.env.DSH_HOME ?? '/home/dsh', 'skills')
+  const inSkills = p => typeof p === 'string' && (p === SKILLS || p.startsWith(`${SKILLS}/`)) && path.posix.normalize(p) === p
+  const skillFs = new LocalFileSystem(new Context(), { cwd: SKILLS, diffBasisMaxBytes: 10 * 1024 * 1024 })
+  const skillTarget = target => inSkills(String(target?.targetKey))
+
   class RoutedFileSystem extends FileSystem {
     get sandboxMode() { return policyService.defaultMode }
     async resolve(p, opts) {
       const zone = readZone()
       const cwd = opts?.cwd ?? (zone ? baseCwd(zone) : '/')
       const abs = absolute(p, cwd)
+      if (inSkills(abs)) {
+        const t = await skillFs.resolve(abs, opts)
+        return inSkills(String(t.targetKey)) ? t : { targetKey: String(t.targetKey), displayPath: String(p) }
+      }
       // Outside: a target that names the path but that every read reports as absent.
       if (zone === undefined || !insideZone(zone, abs)) return { targetKey: abs, displayPath: String(p) }
       const target = await bundle(zone).fs.resolve(p, { ...opts, cwd })
@@ -146,18 +160,19 @@ export function apply(ctx, config = {}) {
       const rel = path.posix.relative(this.processPath(parent), this.processPath(child))
       return rel === '' || (!rel.startsWith('../') && rel !== '..' && !path.posix.isAbsolute(rel))
     }
-    async stat(target, signal) { const z = readableZone(target); return z ? bundle(z).fs.stat(target, signal) : undefined }
+    async stat(target, signal) { if (skillTarget(target)) return skillFs.stat(target, signal); const z = readableZone(target); return z ? bundle(z).fs.stat(target, signal) : undefined }
     async lstat(p, opts, signal) {
       const z = readZone()
       const cwd = z === undefined ? undefined : opts?.cwd ?? baseCwd(z)
+      if (inSkills(absolute(p, cwd ?? '/'))) return skillFs.lstat(absolute(p, cwd ?? '/'), undefined, signal)
       if (z === undefined || !insideZone(z, absolute(p, cwd))) return undefined
       return bundle(z).fs.lstat(p, { ...opts, cwd }, signal)
     }
-    async readText(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readText(target, signal) }
-    async streamText(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.streamText(target, signal) }
-    async readBytes(target, signal, maxBytes) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readBytes(target, signal, maxBytes) }
-    async readByteRange(target, range, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readByteRange(target, range, signal) }
-    async listDir(target, signal) { const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.listDir(target, signal) }
+    async readText(target, signal) { if (skillTarget(target)) return skillFs.readText(target, signal); const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readText(target, signal) }
+    async streamText(target, signal) { if (skillTarget(target)) return skillFs.streamText(target, signal); const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.streamText(target, signal) }
+    async readBytes(target, signal, maxBytes) { if (skillTarget(target)) return skillFs.readBytes(target, signal, maxBytes); const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readBytes(target, signal, maxBytes) }
+    async readByteRange(target, range, signal) { if (skillTarget(target)) return skillFs.readByteRange(target, range, signal); const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.readByteRange(target, range, signal) }
+    async listDir(target, signal) { if (skillTarget(target)) return skillFs.listDir(target, signal); const z = readableZone(target); if (!z) throw notFound(target?.displayPath); return bundle(z).fs.listDir(target, signal) }
     async writeText(target, content, expected, signal, policy) {
       const z = zoneNow(policy); targetIn(z, target)
       return bundle(z).fs.writeText(target, content, expected, signal, policy)

@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Báo cáo tiến độ Project 3</title>
+<style>
+  @page { size: A4; margin: 22mm 20mm 20mm 25mm;
+    @bottom-center { content: counter(page); font: 11pt "Times New Roman", serif; color: #555; } }
+  :root { --red: #a3151b; --brown: #8a4b14; --ink: #1a1a1a; --muted: #555; --line: #c9c9c9; --head: #f3eeee; }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font: 13pt/1.45 "Times New Roman", Times, serif; color: var(--ink); text-align: justify; }
+
+  /* ---------- Bìa ---------- */
+  .cover { width: 210mm; height: 296mm; overflow: hidden; position: relative; break-after: page;
+    background: url("khung-bia.png") center / 192mm 271mm no-repeat; text-align: center; }
+  .cover .in { position: absolute; inset: 22mm 24mm 24mm; display: flex; flex-direction: column; align-items: center; }
+  .cover .org { font-weight: bold; font-size: 13.5pt; line-height: 1.5; margin-top: 4mm; }
+  .cover .sep { font-weight: bold; letter-spacing: 1px; margin-top: 1mm; }
+  .cover .logo { width: 38mm; margin: 16mm 0 14mm; }
+  .cover .kind { font-weight: bold; font-size: 20pt; letter-spacing: .5px; }
+  .cover .title { font-weight: bold; font-size: 16pt; color: var(--brown); line-height: 1.35; margin: 4mm 6mm 0; }
+  .cover .info { margin-top: 18mm; text-align: left; font-size: 13.5pt; border-collapse: collapse; }
+  .cover .info td { padding: 2mm 0; vertical-align: top; }
+  .cover .info td:first-child { font-weight: bold; padding-right: 8mm; white-space: nowrap; }
+  .cover .place { margin-top: auto; font-weight: bold; font-style: italic; font-size: 13.5pt; }
+
+  /* ---------- Nội dung ---------- */
+  h1 { font-size: 15pt; color: var(--red); text-transform: uppercase; margin: 0 0 3mm; padding-bottom: 1.5mm;
+    border-bottom: 1.2pt solid var(--red); break-after: avoid; }
+  h1 .n { margin-right: 2mm; }
+  section + section { margin-top: 7mm; }
+  p { margin: 0 0 2.2mm; }
+  ul { margin: 0 0 2.5mm; padding-left: 6mm; } li { margin-bottom: 1.2mm; }
+  .lead { font-style: italic; }
+  table.data { width: 100%; border-collapse: collapse; margin: 2mm 0 3.5mm; font-size: 11pt; line-height: 1.3; break-inside: avoid; text-align: left; }
+  table.data caption { caption-side: top; text-align: left; font-weight: bold; font-size: 11.5pt; margin-bottom: 1.5mm; }
+  table.data th, table.data td { border: .6pt solid var(--line); padding: 1.4mm 2mm; }
+  table.data th { background: var(--head); font-weight: bold; }
+  table.data td.num, table.data th.num { text-align: right; white-space: nowrap; }
+  table.data tr.total td { font-weight: bold; background: #faf7f7; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 10.5pt; background: #f2f2f2; padding: 0 1mm; border-radius: 1mm; }
+  figure { margin: 3mm 0 4mm; text-align: center; break-inside: avoid; }
+  figure img { width: 100%; border: .6pt solid var(--line); }
+  figcaption { font-size: 11pt; font-style: italic; color: var(--muted); margin-top: 1.5mm; }
+  table.data.wide { font-size: 10pt; } table.data.wide td, table.data.wide th { padding: 1.2mm 1.4mm; white-space: nowrap; }
+  .note { font-size: 11pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="cover"><div class="in">
+  <div class="org">ĐẠI HỌC BÁCH KHOA HÀ NỘI<br>TRƯỜNG CÔNG NGHỆ THÔNG TIN VÀ TRUYỀN THÔNG</div>
+  <div class="sep">-------------------------***-------------------------</div>
+  <img class="logo" src="logo-hust.png" alt="Logo Đại học Bách khoa Hà Nội">
+  <div class="kind">BÁO CÁO TIẾN ĐỘ PROJECT 3</div>
+  <div class="title">AGENT HỖ TRỢ QUẢN TRỊ VIÊN<br>XỬ LÝ PHIẾU HỖ TRỢ TRONG HỆ THỐNG<br>TRA CỨU TÀI LIỆU DOCSHIELD</div>
+  <table class="info">
+    <tr><td>Sinh viên thực hiện:</td><td>Mai Chí Kiên – 20235127</td></tr>
+    <tr><td>Lớp:</td><td>IT1-05</td></tr>
+    <tr><td>Giảng viên hướng dẫn:</td><td>Nguyễn Bình Minh</td></tr>
+  </table>
+  <div class="place">Hà Nội, 11/2026</div>
+</div></div>
+
+<section>
+  <h1><span class="n">1.</span>Tóm tắt</h1>
+  <p>Đề tài xây dựng agent hỗ trợ cán bộ quản trị DocShield xử lý phiếu hỗ trợ. Phiếu sinh ra khi chatbot tra cứu không trả lời được; agent chẩn đoán, tìm lại, soạn đề xuất kèm trích dẫn và phiếu lý do, admin duyệt, sửa hoặc từ chối.</p>
+  <ul>
+    <li><b>Đã xong:</b> kho 24 PDF của ĐHBK Hà Nội (OCR 10 bản scan), bộ 64 câu hỏi có đáp án và 6 nhãn lỗi, bộ chấm tự động, chạy H0 và H1–H3 trên tập dev.</li>
+    <li><b>Kết quả chính (dev, 44 câu):</b> chatbot H0 (qwen3:8b) đúng 27/44, bịa 4. Agent H1 với qwen3:8b chỉ cứu 3/17 câu H0 hỏng; agent H1 với DeepSeek V4 Flash cứu 3/5 câu thử, 0 bịa, JSON hợp lệ 5/5.</li>
+    <li><b>Mới:</b> chuyển agent sang phía admin, xử lý <b>phiếu thật</b> tự động (worker), trang duyệt phiếu cho admin, admin cấp quyền preset cho từng người dùng. Đã chạy thật một phiếu từ đầu đến cuối.</li>
+    <li><b>Chưa làm:</b> chạy tập test (20 câu), agent con tìm nguồn ngoài (H4), thí nghiệm duyệt (RQ3).</li>
+  </ul>
+</section>
+
+<section>
+  <h1><span class="n">2.</span>Kho tài liệu và bộ câu hỏi</h1>
+  <p>Kho gồm 24 PDF công khai của ĐHBK Hà Nội (quy chế đào tạo, học phí 2025–2026 và 2026–2027, học bổng…), trong đó 4 bản cũ được giữ lại để tạo câu hỏi “văn bản cũ/mâu thuẫn”. 10 bản scan được OCR bằng ocrmypdf + Tesseract tiếng Việt vì DocShield không có OCR; cả 24 file đã nạp vào kho chung. Sáu chủ đề cố ý không có trong kho: ký túc xá, BHYT, cách chấm điểm rèn luyện, cấp lại thẻ sinh viên, lịch nghỉ Tết 2027, học phí 2027–2028.</p>
+  <p>Bộ 64 câu hỏi có đáp án và bằng chứng nguyên văn (đã kiểm tra khớp kho 100%), mỗi câu gắn một trong 6 nhãn theo lý do chatbot dễ trượt, chia dev/test theo nhãn:</p>
+  <table class="data">
+    <caption>Bảng 1. Phân bố câu hỏi theo nhãn</caption>
+    <tr><th>Nhãn</th><th>Ý nghĩa</th><th class="num">Dev</th><th class="num">Test</th></tr>
+    <tr><td>truc-tiep</td><td>Có sẵn, hỏi thẳng</td><td class="num">9</td><td class="num">4</td></tr>
+    <tr><td>tim-kiem-truot</td><td>Kho có nhưng khác từ ngữ</td><td class="num">10</td><td class="num">5</td></tr>
+    <tr><td>nhieu-buoc</td><td>Cần ghép nhiều đoạn hoặc tính toán</td><td class="num">11</td><td class="num">5</td></tr>
+    <tr><td>cu-mau-thuan</td><td>Có văn bản cũ/mới</td><td class="num">6</td><td class="num">3</td></tr>
+    <tr><td>mo-ho</td><td>Câu hỏi mơ hồ, cần hỏi lại</td><td class="num">4</td><td class="num">1</td></tr>
+    <tr><td>thieu</td><td>Kho không có</td><td class="num">4</td><td class="num">2</td></tr>
+    <tr class="total"><td>Tổng</td><td></td><td class="num">44</td><td class="num">20</td></tr>
+  </table>
+  <p>Chấm tự động bằng giám khảo qwen3:8b (nhãn: đúng / một phần / từ chối / sai / bịa) cộng luật kiểm tra trích đúng nguồn; khoảng 20% kết quả sẽ được chấm tay để đối chiếu.</p>
+</section>
+
+<section>
+  <h1><span class="n">3.</span>H0 – chatbot trên tập dev</h1>
+  <p>Chatbot (preset <code>docshield</code>, qwen3:8b chạy local) đúng 27/44 câu (61%) và bịa 4 câu; yếu nhất ở câu mơ hồ (bịa 3/4) và câu nhiều bước (đúng 5/11). Chỉ 7/17 câu hỏng sinh phiếu hỗ trợ — 10 câu còn lại chatbot trả lời thiếu hoặc bịa mà không chuyển phiếu.</p>
+  <table class="data">
+    <caption>Bảng 2. Kết quả H0 theo nhãn (dev, 44 câu)</caption>
+    <tr><th>Nhãn</th><th class="num">Số câu</th><th class="num">Đúng</th><th class="num">Một phần</th><th class="num">Từ chối</th><th class="num">Bịa</th><th class="num">Lỗi chạy</th></tr>
+    <tr><td>truc-tiep</td><td class="num">9</td><td class="num">8</td><td class="num">0</td><td class="num">0</td><td class="num">1</td><td class="num">0</td></tr>
+    <tr><td>tim-kiem-truot</td><td class="num">10</td><td class="num">6</td><td class="num">2</td><td class="num">2</td><td class="num">0</td><td class="num">0</td></tr>
+    <tr><td>nhieu-buoc</td><td class="num">11</td><td class="num">5</td><td class="num">3</td><td class="num">2</td><td class="num">0</td><td class="num">1</td></tr>
+    <tr><td>cu-mau-thuan</td><td class="num">6</td><td class="num">4</td><td class="num">1</td><td class="num">1</td><td class="num">0</td><td class="num">0</td></tr>
+    <tr><td>mo-ho</td><td class="num">4</td><td class="num">0</td><td class="num">1</td><td class="num">0</td><td class="num">3</td><td class="num">0</td></tr>
+    <tr><td>thieu</td><td class="num">4</td><td class="num">4</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0</td></tr>
+    <tr class="total"><td>Tổng</td><td class="num">44</td><td class="num">27</td><td class="num">7</td><td class="num">5</td><td class="num">4</td><td class="num">1</td></tr>
+  </table>
+  <p class="note">Trung bình mỗi câu: 2,3 lượt gọi model, 7.827 token, 198 giây; trích đúng file nguồn 22/38 câu có bằng chứng. Với nhãn <code>thieu</code>, “đúng” nghĩa là chatbot từ chối đúng và chuyển phiếu.</p>
+</section>
+
+<section>
+  <h1><span class="n">4.</span>Agent H1–H3 trên tập dev</h1>
+  <p>Với qwen3:8b, agent <b>không tốt hơn chatbot</b>: H1 cứu 3/17 câu H0 hỏng nhưng bịa thêm 4 câu, và thêm kế hoạch (H2) hay subagent (H3) không giúp. Đổi sang model API (DeepSeek V4 Flash) thì agent cứu 3/5 câu thử, không bịa, nhưng tốn khoảng 120 nghìn token mỗi câu.</p>
+  <p>Cấu hình: H1 = tìm lại nhiều lượt + chạy mã; H1v2 = H1 sau khi sửa prompt; H2 = H1 + lập kế hoạch/todo; H3 = H2 + subagent. Agent xuất phiếu đề xuất JSON (chẩn đoán, câu trả lời, trích dẫn, đề xuất cập nhật kho, phiếu lý do, độ tin cậy).</p>
+  <table class="data wide">
+    <caption>Bảng 3. Kết quả các cấu hình agent</caption>
+    <tr><th>Cấu hình</th><th>Model</th><th>Chạy trên</th><th class="num">Số câu</th><th class="num">Đúng</th><th class="num">Một phần</th><th class="num">Bịa</th><th class="num">JSON hợp lệ</th><th class="num">Kiểm chứng</th><th class="num">Token TB</th><th class="num">Giây TB</th></tr>
+    <tr><td>H1</td><td>qwen3:8b</td><td>toàn bộ dev</td><td class="num">44</td><td class="num">22</td><td class="num">12</td><td class="num">7</td><td class="num">41/44</td><td class="num">35/44</td><td class="num">16.777</td><td class="num">477</td></tr>
+    <tr><td>H1v2</td><td>qwen3:8b</td><td>câu H1 sai</td><td class="num">22</td><td class="num">7</td><td class="num">7</td><td class="num">5</td><td class="num">19/22</td><td class="num">14/22</td><td class="num">19.977</td><td class="num">561</td></tr>
+    <tr><td>H2</td><td>qwen3:8b</td><td>12 câu khó</td><td class="num">12</td><td class="num">4</td><td class="num">2</td><td class="num">2</td><td class="num">7/12</td><td class="num">6/12</td><td class="num">20.694</td><td class="num">597</td></tr>
+    <tr><td>H3</td><td>qwen3:8b</td><td>12 câu khó</td><td class="num">12</td><td class="num">5</td><td class="num">2</td><td class="num">1</td><td class="num">11/12</td><td class="num">10/12</td><td class="num">21.315</td><td class="num">642</td></tr>
+    <tr><td>H1api</td><td>DeepSeek V4 Flash</td><td>5 câu H0 hỏng</td><td class="num">5</td><td class="num">3</td><td class="num">2</td><td class="num">0</td><td class="num">5/5</td><td class="num">5/5</td><td class="num">120.284</td><td class="num">202</td></tr>
+  </table>
+  <p>Trên cùng 12 câu khó, số câu đúng (bịa): H0 7 (0), H1 6 (2), H2 4 (2), H3 5 (1).</p>
+  <table class="data">
+    <caption>Bảng 4. Chỉ số “cứu câu H0 hỏng” — agent chỉ xử lý câu chatbot trả lời hỏng</caption>
+    <tr><th>Agent</th><th class="num">Câu H0 hỏng được chạy</th><th class="num">Cứu được</th><th class="num">Bịa</th></tr>
+    <tr><td>H1 (qwen3:8b)</td><td class="num">17</td><td class="num">3</td><td class="num">4</td></tr>
+    <tr><td>H1v2 (qwen3:8b)</td><td class="num">14</td><td class="num">4</td><td class="num">4</td></tr>
+    <tr><td>H1api (DeepSeek V4 Flash)</td><td class="num">5</td><td class="num">3</td><td class="num">0</td></tr>
+  </table>
+  <p>Ngược lại, trên 27 câu H0 đã đúng, H1 (8B) làm hỏng 8 câu — lý do agent chỉ nên chạy trên phiếu, không thay chatbot.</p>
+  <p><b>Vì sao tốn token:</b> mỗi lượt gọi model gửi lại toàn bộ ngữ cảnh (system prompt, mô tả khoảng 15 nhóm tool, các đoạn tài liệu đã tìm). DeepSeek làm trung bình 6,2 lượt × ~17.800 token đầu vào; 92% token là đầu vào. Có thể giảm bằng cách bỏ tool thừa và giảm số đoạn trả về mỗi lần tìm.</p>
+  <p><b>Ví dụ</b> (câu q29, học phí 20 tín chỉ ngành KHMT năm 2026–2027): chatbot tìm 1 lần rồi chuyển phiếu; agent DeepSeek tìm 4 truy vấn, loại văn bản học phí 2025–2026 đã cũ, chạy Python 20 × 700.000 = 14.000.000 đồng, xác minh 2 trích dẫn nguyên văn, chẩn đoán <code>nhieu-buoc</code>.</p>
+</section>
+
+<section>
+  <h1><span class="n">5.</span>Hệ thống đã xây</h1>
+  <p>Luồng phiếu đã chạy thật từ đầu đến cuối: người dùng hỏi, chatbot tạo phiếu, agent tự soạn đề xuất trong vài chục giây, admin duyệt trên web, người hỏi thấy phản hồi.</p>
+  <figure>
+    <img src="so-do-luong-phieu.png" alt="Sơ đồ luồng xử lý phiếu hỗ trợ">
+    <figcaption>Hình 1. Luồng xử lý phiếu hỗ trợ đã triển khai</figcaption>
+  </figure>
+  <ul>
+    <li><b>Agent phía admin:</b> preset <code>p3-h1/h2/h3</code> chạy dưới tài khoản dịch vụ admin, đọc phiếu thật kèm đoạn chat của chatbot (đã tìm gì, tìm được gì). Agent <b>không có tool ghi</b> (không tự trả lời người hỏi, không sửa kho) — quyết định cuối thuộc admin.</li>
+    <li><b>Worker tự động:</b> bật cùng hệ thống, quét phiếu mới mỗi 20 giây; tùy chọn cho agent dùng đúng model của phiên chatbot đã tạo phiếu.</li>
+    <li><b>Đề xuất tách khỏi phản hồi:</b> lưu ở bảng riêng; người hỏi không thấy bản nháp cho tới khi admin duyệt.</li>
+    <li><b>Trang duyệt phiếu:</b> chẩn đoán, câu trả lời, trích dẫn, phiếu lý do (ẩn được, dùng cho thí nghiệm RQ3), ô trả lời điền sẵn để sửa; duyệt có thể kèm “thêm vào kho hỏi đáp” để đo bồi đắp.</li>
+    <li><b>Quản trị:</b> admin cấp preset cho từng người dùng; thiết kế lại giao diện trang quản trị.</li>
+    <li><b>Đo lường:</b> <code>eval.py tickets</code> (agent xử lý phiếu thật do H0 tạo), <code>reask</code> (hỏi lại sau bồi đắp), chỉ số “cứu câu H0 hỏng”. Unit test: gate 91/91, DocShield 119/120 (1 test cũ lỗi sẵn, không liên quan).</li>
+  </ul>
+  <p><b>Chạy thật (TICK-116):</b> người dùng hỏi phí ký túc xá (chủ đề kho cố ý thiếu). Agent <code>gemini-3.5-flash-lite</code> xử lý trong 37 giây, 51 nghìn token: chẩn đoán đúng <code>thieu</code>, không bịa số, đề xuất bổ sung văn bản phí ký túc xá, độ tin cậy cao.</p>
+</section>
+
+<section>
+  <h1><span class="n">6.</span>Nhận xét và hạn chế</h1>
+  <p>Vấn đề lớn nhất: khi chatbot dùng model mạnh, việc agent “tìm lại trong cùng kho” mang lại rất ít — phiếu còn lại chủ yếu là kho thiếu, mà tìm lại bao nhiêu cũng không ra.</p>
+  <ul>
+    <li><b>Model nhỏ yếu với vòng agent dài:</b> qwen3:8b gọi trung bình ~2 lượt rồi dừng, bịa nhiều hơn chatbot; thêm cấu trúc (H2, H3) không cải thiện.</li>
+    <li><b>Chatbot mạnh tự giải câu khó:</b> cùng câu học phí 20 tín chỉ, chatbot dùng model API trả lời đúng trong 13 giây; câu này không còn sinh phiếu.</li>
+    <li><b>Model nhỏ không ổn định:</b> qwen3:8b có lần trượt (tạo phiếu), có lần đúng cùng câu đó (nhưng mất ~20 phút) — không dùng để demo trực tiếp được.</li>
+    <li><b>Phiếu ít:</b> dev chỉ 7/44 câu sinh phiếu; tập test 20 câu dự kiến chỉ 3–4 phiếu, quá ít để kết luận RQ1/RQ2.</li>
+    <li><b>Model API miễn phí không tin cậy:</b> DeepSeek qua OrcaRouter bị chặn 429 khoảng 6 giờ; DeepSeek qua 9Router hết số dư (402); Gemini 3.8 Flash quá tải (503). Hiện dùng Gemini 3 Flash Preview / 2.5 Flash / 3.5 Flash Lite — chạy được nhưng vẫn có hạn mức.</li>
+    <li><b>Chi phí token:</b> agent API tốn ~120 nghìn token mỗi phiếu (gấp ~15 lần chatbot), chủ yếu do gửi lại ngữ cảnh mỗi lượt.</li>
+    <li><b>Giới hạn đánh giá:</b> giám khảo là qwen3:8b, chưa chấm tay đối chiếu; kết quả H1api chỉ trên 5 câu; kết quả H1–H3 dev là bản agent cũ phía người dùng (chưa có đoạn chat chatbot).</li>
+  </ul>
+</section>
+
+</body>
+</html>

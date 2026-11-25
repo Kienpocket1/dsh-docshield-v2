@@ -85,7 +85,7 @@ describe('migration', () => {
       PRAGMA user_version = 1;`)
     old.close()
     const upgraded = openDatabase(file)
-    expect(upgraded.prepare('PRAGMA user_version').get()).toEqual({ user_version: 4 })
+    expect(upgraded.prepare('PRAGMA user_version').get()).toEqual({ user_version: 5 })
     expect(upgraded.prepare("SELECT name FROM sqlite_master WHERE name IN ('tickets', 'public_files') ORDER BY name").all()).toEqual([{ name: 'public_files' }, { name: 'tickets' }])
     expect(upgraded.prepare('SELECT filename FROM documents').all()).toEqual([{ filename: 'cv.txt' }])
     expect(new TicketStore(upgraded).create({ userId: 'alice', sessionId: 's', question: 'q', reason: 'r' }).ticket.code).toBe('TICK-101')

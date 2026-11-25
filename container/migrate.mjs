@@ -1,5 +1,5 @@
 // One-time copy of the Windows runtime into the Docker volumes of the shared DSH.
-//   node container/migrate.mjs [--from E:\Deepseek_Harness\runtime] [--prefix docshield] [--force]
+//   node container/migrate.mjs --from <thư mục runtime cũ> [--prefix docshield] [--force]
 //   node container/migrate.mjs --fix-perms [--prefix docshield]   only tidy permissions of an existing storage volume
 // Never deletes the source. Refuses non-empty volumes unless --force.
 // Everything copied is chowned to 1000:1000 (dsh-main and tool containers run as uid 1000), then checked;
@@ -9,7 +9,8 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 
 const arg = (name, fallback) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : fallback }
-const FROM = path.resolve(arg('--from', 'E:\\Deepseek_Harness\\runtime'))
+if (!process.argv.includes('--fix-perms') && !arg('--from')) throw new Error('cần --from <thư mục runtime cũ>')
+const FROM = path.resolve(arg('--from', '.'))
 const P = arg('--prefix', 'docshield')
 const FORCE = process.argv.includes('--force')
 if (!/^[a-z][a-z0-9-]{1,20}$/.test(P)) throw new Error('prefix không hợp lệ')

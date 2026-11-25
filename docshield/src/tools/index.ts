@@ -28,11 +28,11 @@ const RENDERERS: Record<string, ToolRender | undefined> = {
 }
 
 export function apply(ctx: DshContext, rawConfig?: unknown): void {
-  const { role } = resolveToolsConfig(rawConfig)
+  const { role, exclude = [] } = resolveToolsConfig(rawConfig)
   const backend = ctx.docshield
   const allowed = role === 'admin' ? ADMIN_TOOLS : USER_TOOLS
   for (const spec of TOOL_SPECS) {
-    if (!allowed.has(spec.name)) continue
+    if (!allowed.has(spec.name) || exclude.includes(spec.name)) continue
     const definition = defineDocTool(spec, backend, backend.invoke, RENDERERS[spec.name])
     ctx.effect(() => ctx.tools.register(definition), `docshield-tools: ${spec.name}`)
   }

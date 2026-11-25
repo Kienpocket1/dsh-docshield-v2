@@ -1,0 +1,57 @@
+
+=== trang 1 ===
+Trang 1/4 
+ 
+HƯỚNG DẪN CÔNG NHẬN HỌC PHẦN  
+VÀO CHƯƠNG TRÌNH ĐÀO TẠO KỸ SƯ CHUYÊN SÂU 
+I. Phạm vi áp dụng: 
+1. Dành cho học viên chương trình đào tạo kỹ sư chuyên sâu (KSCS) theo chương trình 
+tích hợp. 
+2. Dành cho học viên đã được cấp mã số học viên tạm thời và học viên đã được công 
+nhận chính thức. 
+II. Mục đích: 
+1. Học viên chọn các học phần KSCS đã tích lũy khi đang học cử nhân vào bảng điểm 
+KSCS 
+o Điều kiện áp dụng: được công nhận tối đa 15 tín chỉ học trước. 
+2. Học viên học theo chương trình đào tạo tích hợp (CTĐT) sẽ được lựa chọn để công 
+nhận tối đa 12 tín chỉ trong CTĐT cử nhân vào bảng điểm CTĐT KSCS. 
+Điều kiện áp dụng: 
+o Chỉ áp dụng với các học viên đã tốt nghiệp cử nhân và được công nhận chính 
+thức là học viên CTĐT KSCS; 
+o Số 12 tín chỉ được công nhận này là của các học phần đáp ứng đồng thời 02 
+điều kiện sau: 
+▪ Thuộc Mô đun định hướng của CTĐT cử nhân mà sinh viên đã học, 
+không tính Thực tập và Đồ án tốt nghiệp cử nhân; 
+▪ Có trong bảng điểm tốt nghiệp cử nhân của sinh viên. 
+o Ghi chú:  
+▪ 12 tín chỉ của các học phần được công nhận từ bảng điểm tốt nghiệp 
+cử nhân vào bảng điểm KSCS sẽ ghi điểm R (không tính vào CPA tốt 
+nghiệp KSCS, chỉ tính vào tổng số tín chỉ tích lũy). 
+▪ Tổng số tín chỉ trong bảng điểm KSCS sẽ là: 12 tín chỉ công nhận do học 
+tích hợp (điểm R) + 48 tín chỉ thuộc khung CTĐT KSCS tích hợp = 60 tín 
+chỉ (tối thiểu). 
+III. Các bước thực hiện: 
+1. Học viên đăng nhập https://ctt-sis.hust.edu.vn 
+
+=== trang 2 ===
+Trang 2/4 
+ 
+ 
+2. Chọn mục tương ứng để thực hiện các thủ tục đã nêu tại Mục II của bản hướng 
+dẫn này. 
+Giao diện chọn học phần KSCS đã tích lũy khi đang là SV bậc cử nhân vào CTĐT 
+KSCS: 
+
+=== trang 3 ===
+Trang 3/4 
+ 
+ 
+ 
+ 
+
+=== trang 4 ===
+Trang 4/4 
+ 
+Giao diện chọn học phần từ bảng điểm tốt nghiệp cử nhân công nhận tích hợp 
+vào bảng điểm KSCS: 
+ 

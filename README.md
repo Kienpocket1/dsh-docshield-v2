@@ -10,10 +10,10 @@ Chatbot tra cứu tài liệu nội bộ cho nhiều người dùng, chạy trê
 
 ## Chạy
 ```
-E:\Deepseek_Harness\start-9router.cmd     # model chat
-E:\Deepseek_Harness\start-gate.cmd        # 1 DSH chung + gate → http://127.0.0.1:3444
+9router                                   # model chat, cổng 20128
+start.cmd                                 # 1 DSH chung + gate trong Docker → http://127.0.0.1:3454
 ```
-Dữ liệu chạy (DSH, DSH_HOME, tài liệu, tài khoản) nằm ngoài repo, trong `E:\Deepseek_Harness\runtime\`.
+Dữ liệu chạy (DSH, DSH_HOME, tài liệu, tài khoản) nằm ngoài repo, trong các volume Docker `congty-*`.
 
 ## Phát triển
 ```

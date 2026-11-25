@@ -9,13 +9,15 @@
  * - Where (TC14, TC16): IPv4 only; the proxy resolves the name itself, every
  *   address must be public, and it connects to exactly the address it checked
  *   (no second lookup → no DNS rebinding). Plain HTTP to port 80, CONNECT to 443.
+ *   Exception: plain HTTP to an exact `host:port` in `localAllow` (EGRESS_LOCAL_ALLOW,
+ *   comma list, e.g. `host.docker.internal:8765` for the remove-ai-marks service).
  * - How much (TC15): per zone, connections/minute, concurrent connections and
  *   bytes up/down per minute, counted on the raw TCP stream (inside a CONNECT
  *   tunnel that is TLS bytes); over the upload budget both sockets are cut.
  *   Unlimited by default (DEFAULT_LIMITS); only `limits` passed in set a cap.
  * - Log: one JSON line per connection to stdout and EGRESS_LOG (rotated at 5 MB).
  *
- *   EGRESS_SECRET=<hex> [EGRESS_PORT=3128] [EGRESS_LOG=/var/egress/egress.jsonl] node egress-proxy.mjs
+ *   EGRESS_SECRET=<hex> [EGRESS_PORT=3128] [EGRESS_LOG=/var/egress/egress.jsonl] [EGRESS_LOCAL_ALLOW=host:port,…] node egress-proxy.mjs
  */
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import dns from 'node:dns'
@@ -78,6 +80,14 @@ export async function resolvePublic(host, lookup = dns.promises.lookup) {
   return addrs[0].address
 }
 
+/** First IPv4 address of an allow-listed local name (no public check: the name:port itself was allowed). */
+async function resolveLocal(host, lookup) {
+  let addrs
+  try { addrs = await lookup(host, { all: true, family: 4 }) } catch { throw new Denied(502, 'dns') }
+  if (!Array.isArray(addrs) || addrs.length === 0) throw new Denied(502, 'dns')
+  return addrs[0].address
+}
+
 /** Sum of amounts added within the last `ms`. */
 class Window {
   constructor(ms) { this.ms = ms; this.items = []; this.sum = 0 }
@@ -98,9 +108,11 @@ const ADMIN_FACTOR = 3
  * @param {Partial<typeof DEFAULT_LIMITS>} [o.limits]
  * @param {(ip: string, port: number) => net.Socket} [o.dial]  upstream connector (tests)
  * @param {number} [o.headersTimeoutMs]
+ * @param {string[]} [o.localAllow]  exact `host:port` targets allowed for plain HTTP even though they are private
  */
-export function createEgressProxy({ secret, log = () => {}, lookup, limits = {}, dial = (ip, port) => net.connect({ host: ip, port }), headersTimeoutMs = 10_000 }) {
+export function createEgressProxy({ secret, log = () => {}, lookup = dns.promises.lookup, limits = {}, dial = (ip, port) => net.connect({ host: ip, port }), headersTimeoutMs = 10_000, localAllow = [] }) {
   if (!secret) throw new Error('egress-proxy: thiếu EGRESS_SECRET')
+  const allowed = new Set(localAllow.map(t => t.trim().toLowerCase()).filter(Boolean))
   const base = { ...DEFAULT_LIMITS, ...limits }
   const budgets = new Map()
   const budget = zone => {
@@ -224,12 +236,14 @@ export function createEgressProxy({ secret, log = () => {}, lookup, limits = {},
     }
     if (!zone) return refuse(407, 'auth')
     if (!url || url.protocol !== 'http:' || url.username || url.password) return refuse(400, 'bad-request')
-    if (url.port !== '' && url.port !== '80') return refuse(403, 'port')
+    const port = Number(url.port || 80)
+    const local = allowed.has(`${url.hostname}:${port}`)
+    if (!local && port !== 80) return refuse(403, 'port')
     let b
     let ip
     try {
       b = admit(zone)
-      ip = await resolvePublic(url.hostname, lookup)
+      ip = local ? await resolveLocal(url.hostname, lookup) : await resolvePublic(url.hostname, lookup)
     } catch (e) {
       if (e instanceof Denied) return refuse(e.status, e.reason, e.detail)
       return refuse(502, 'error')
@@ -240,7 +254,7 @@ export function createEgressProxy({ secret, log = () => {}, lookup, limits = {},
     for (const [k, v] of Object.entries(req.headers)) if (!HOP_BY_HOP.has(k)) headers[k] = v
     headers.host = url.host
     headers.connection = 'close'
-    const sock = dial(ip, 80)
+    const sock = dial(ip, port)
     const up = http.request({ createConnection: () => sock, method: req.method, path: `${url.pathname}${url.search}`, headers, setHost: false })
     let over
     const cut = which => { over ??= which; up.destroy(); req.destroy(); res.destroy() }
@@ -288,7 +302,7 @@ export function fileLogger(file, maxBytes = 5 * 1024 * 1024) {
 
 if (process.argv[1]?.replace(/\\/g, '/').endsWith('/egress-proxy.mjs')) {
   const port = Number(process.env.EGRESS_PORT ?? 3128)
-  const server = createEgressProxy({ secret: process.env.EGRESS_SECRET, log: fileLogger(process.env.EGRESS_LOG) })
+  const server = createEgressProxy({ secret: process.env.EGRESS_SECRET, log: fileLogger(process.env.EGRESS_LOG), localAllow: (process.env.EGRESS_LOCAL_ALLOW ?? '').split(',') })
   delete process.env.EGRESS_SECRET
   server.listen(port, '0.0.0.0', () => console.log(`egress-proxy: nghe :${port}`))
   for (const s of ['SIGINT', 'SIGTERM']) process.on(s, () => process.exit(0))

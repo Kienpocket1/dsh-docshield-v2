@@ -12,8 +12,17 @@ set "PROXY_IMAGE=congty-egress-proxy:dev"
 rem Lan dau: de trong = tao ban sach; hoac duong dan runtime Windows cu de chep du lieu sang.
 set "RUNTIME_DIR="
 rem Ma nguon DeepSeek Harness (chi doc) de build image.
-set "DSH_SOURCE=E:\Deepseek_Harness\deepseek-harness"
+set "DSH_SOURCE=E:\Company\deepseek-harness"
 rem Ban sach: volume co san mo hinh nhung de chep (chi doc thu muc .docshield/models); de trong = khong chep.
 set "MODEL_FROM=docshield-storage"
 rem Han muc dia moi nguoi (MB).
 set "TOOL_QUOTA_MB=1024"
+rem Dich noi bo duy nhat egress-proxy cho di (HTTP thuong): service remove-ai-marks (tools-local\start-watermarks.cmd). De trong = tat.
+set "EGRESS_LOCAL_ALLOW=host.docker.internal:8765"
+rem Project 3: tu bat agent xu ly phieu (project3\worker.py) cung start.cmd: 1 = bat, de trong = tat.
+set "P3_WORKER="
+rem Model cua agent (provider DSH + model). nien-router = 9Router; ollama-local + qwen3:8b = may nay (cham).
+set "P3_PROVIDER=nien-router"
+set "P3_RUN_MODEL=gemini/gemini-3-flash-preview"
+rem 1 = agent dung dung model cua phien chatbot da tao phieu (khong ghi thi dung P3_RUN_MODEL); de trong = luon dung P3_RUN_MODEL.
+set "P3_MODEL_FROM_TICKET="

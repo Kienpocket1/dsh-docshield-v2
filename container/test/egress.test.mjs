@@ -67,13 +67,13 @@ after(() => { for (const c of closers) c() })
 const listen = async server => { await new Promise(r => server.listen(0, '127.0.0.1', r)); closers.push(() => server.close()); return server.address().port }
 
 /** A proxy whose names map to PUBLIC (or as given) and whose dials land on a local port. */
-async function startProxy({ names = {}, limits, headersTimeoutMs } = {}) {
+async function startProxy({ names = {}, limits, headersTimeoutMs, localAllow } = {}) {
   const logs = []
   const dials = []
   let target = 0
   const lookup = async host => (names[host] ?? [PUBLIC]).map(address => ({ address, family: 4 }))
   const server = createEgressProxy({
-    secret: SECRET, log: e => logs.push(e), lookup, limits, headersTimeoutMs,
+    secret: SECRET, log: e => logs.push(e), lookup, limits, headersTimeoutMs, localAllow,
     dial: (ip, port) => { dials.push(`${ip}:${port}`); return net.connect({ host: '127.0.0.1', port: target }) },
   })
   const port = await listen(server)
@@ -185,6 +185,23 @@ describe('egress proxy', () => {
     assert.equal((await get('https://example.com/')).status, 400)
     await waitFor(() => p.logs.length === 4)
     assert.deepEqual(p.logs.map(l => l.status), [200, 403, 407, 400])
+  })
+
+  it('lets plain HTTP reach exactly an allow-listed private host:port, nothing next to it', async () => {
+    const web = http.createServer((_req, res) => res.end('svc'))
+    const p = await startProxy({ names: { 'host.docker.internal': ['192.168.65.254'] }, localAllow: ['host.docker.internal:8765'] })
+    p.setTarget(await listen(web))
+    const get = url => new Promise((resolve, reject) => {
+      http.request({ host: '127.0.0.1', port: p.port, path: url, headers: { 'proxy-authorization': basic('user:alice') } }, res => {
+        res.resume().on('end', () => resolve(res.statusCode))
+      }).on('error', reject).end()
+    })
+    assert.equal(await get('http://host.docker.internal:8765/health'), 200)
+    assert.equal(await get('http://host.docker.internal:8766/'), 403)
+    assert.equal(await get('http://host.docker.internal/'), 403)
+    assert.deepEqual(p.dials, ['192.168.65.254:8765'])
+    // CONNECT stays public-only, allow-list or not.
+    assert.equal((await connect(p.port, 'host.docker.internal:8765', basic('user:alice'))).status, 403)
   })
 
   it('drops a client that sends its headers too slowly (slowloris)', async () => {

@@ -70,6 +70,12 @@ echo   - Dang nhap tai:  http://127.0.0.1:%GATE_PORT%  (lan dau: trang /gate/set
 echo   - Tao tai khoan:  docker exec -it -e GATE_VAR_DIR=/var/gate %TOOL_PREFIX%-dsh-main node /opt/plugins/dsh-gate/bin/gate.mjs user add ^<ten^>
 echo   - Dong cua so nay de tat.
 echo.
+rem Project 3: agent xu ly phieu tu dong (project3\worker.py) trong cua so rieng, khi local.cmd dat P3_WORKER=1.
+rem Model: P3_PROVIDER / P3_RUN_MODEL trong local.cmd. Worker tu cho he thong san sang; dong cua so do de tat agent.
+if "%P3_WORKER%"=="1" (
+  echo   - Agent xu ly phieu: cua so "P3 worker" ^(model %P3_RUN_MODEL%^)
+  start "P3 worker" /d "%REPO%\project3" cmd /k python -X utf8 worker.py
+)
 cd /d "%REPO%"
 "%NODE_EXE%" exec-router\tool-manager.mjs
 goto :end

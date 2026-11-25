@@ -7,6 +7,7 @@
 //   node bin/gate.mjs user approve|reject <name>   (self-registration requests)
 //   node bin/gate.mjs user list
 //   node bin/gate.mjs audit [n]
+import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import path from 'node:path'
@@ -73,10 +74,11 @@ async function serve() {
   const upstream = new Upstream(config.upstreamUrl)
   const call = (method, args) => callUpstream(upstream, method, args)
   const sessions = new SessionIndex(call)
-  const filter = createFilter({ upstream, sessions, call, storageRoot: config.storageRoot, log })
+  const filter = createFilter({ upstream, sessions, call, storageRoot: config.storageRoot, presetsOf: name => store.presetsOf(name), log })
   // No account yet: allow /gate/setup, guarded by a one-time key only this console shows.
   const setupKey = store.countUsers() === 0 ? randomBytes(6).toString('hex').match(/.{4}/g).join('-') : undefined
-  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), upstream, filter, setupKey, trustProxy: config.trustProxy, trustedPeers: config.trustedPeers, calibrationToken, egressLog: config.egressLog, sharedDirectAddr: config.sharedDirectAddr, log })
+  const presetCatalog = async () => ((await call('agentPresets/list', {}))?.presets ?? []).filter(p => !p.broken).map(p => p.id)
+  const gate = createGate({ store, secret: loadSecret(path.join(config.varDir, 'secret.key')), upstream, filter, setupKey, presetCatalog, tickets: ticketsCli(process.env.GATE_TICKETS_CLI), trustProxy: config.trustProxy, trustedPeers: config.trustedPeers, calibrationToken, egressLog: config.egressLog, sharedDirectAddr: config.sharedDirectAddr, log })
   await new Promise(resolve => gate.listen(config.port, config.host, resolve))
   log(`http://${config.host}:${config.port} (DSH ${upstream.origin})`)
   if (setupKey !== undefined) {
@@ -135,5 +137,19 @@ function hiddenPrompt(question) {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true })
     rl._writeToOutput = s => { if (s.includes(question)) process.stdout.write(question) }
     rl.question(question, answer => { rl.close(); process.stdout.write('\n'); resolve(answer) })
+  })
+}
+
+/** DocShield's ticket CLI (same container) for /gate/admin/tickets; undefined when not configured. */
+function ticketsCli(cli) {
+  if (!cli) return undefined
+  return (args, input) => new Promise((resolve, reject) => {
+    const child = execFile(process.execPath, [cli, ...args], { timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }, (err, stdout) => {
+      let out
+      try { out = JSON.parse(stdout) } catch { return reject(new Error(err ? `lỗi CLI phiếu: ${err.message}` : 'CLI phiếu trả kết quả không hợp lệ')) }
+      if (out && typeof out === 'object' && 'error' in out) return reject(new Error(out.error))
+      resolve(out)
+    })
+    child.stdin.end(input === undefined ? '' : JSON.stringify(input))
   })
 }

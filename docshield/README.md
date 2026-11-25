@@ -13,7 +13,7 @@ Chatbot tra cứu tài liệu nội bộ cho nhiều người dùng, chạy trê
 | Cách ly | **Mỗi user một tiến trình DSH riêng** (DSH_HOME riêng), không phải lọc lưu lượng | Một DSH chung, gateway lọc phiên/workspace |
 | Danh tính cho DocShield | Gate truyền qua cấu hình (`identity`) | Suy ra từ thư mục làm việc (cwd) của phiên |
 | Embedding | Một dịch vụ bge-m3 dùng chung (`scripts/embed-server.mjs`, :3490) | bge-m3 trong tiến trình DSH |
-| Chạy | `E:\Deepseek_Harness\start-gate.cmd` → http://127.0.0.1:3444 | `_archive/root-old/start-docshield.cmd` → http://127.0.0.1:3443 |
+| Chạy | `start.cmd` (gốc repo) → http://127.0.0.1:3454 | `_archive/root-old/start-docshield.cmd` → http://127.0.0.1:3443 |
 
 Chi tiết cổng mới: [../gate/README.md](../gate/README.md). Các phần bên dưới mô tả cách cũ; plugin DocShield vẫn hỗ trợ cả hai cách, vì khi không cấu hình `identity` thì nó quay về suy danh tính từ cwd.
 
@@ -26,9 +26,9 @@ Chi tiết cổng mới: [../gate/README.md](../gate/README.md). Các phần bê
 | Model chat: bất kỳ nhà cung cấp nào DSH hỗ trợ (demo: `nien-router/my-models-free` qua 9Router) | Sinh câu trả lời |
 
 ## Chạy
-1. Mở `E:\Deepseek_Harness\start-9router.cmd` (model chat).
-2. Mở `E:\Deepseek_Harness\start-gate.cmd` (khuyến nghị), hoặc `_archive/root-old/start-docshield.cmd` nếu dùng cách cũ.
-3. Mở trình duyệt vào **http://127.0.0.1:3444** (gate), hoặc :3443 nếu dùng cách cũ.
+1. Bật 9Router (`9router`, cổng 20128) cho model chat.
+2. Chạy `start.cmd` ở gốc repo (khuyến nghị), hoặc `_archive/root-old/start-docshield.cmd` nếu dùng cách cũ.
+3. Mở trình duyệt vào **http://127.0.0.1:3454** (gate), hoặc :3443 nếu dùng cách cũ.
    > Không vào thẳng cổng của DSH: cổng đó bỏ qua lớp đăng nhập. Không đưa URL có `?token=` trong cửa sổ console cho ai.
 
 ## Cách hoạt động: danh tính = workspace
@@ -90,7 +90,7 @@ npm run build        # tsc (host) + esbuild (client → dist/client.js)
 npm test             # vitest, 95 test (tự build trước, vì TC-06 chạy 5 tiến trình con)
 node scripts/build-presets.mjs && node scripts/install-presets.mjs   # sau khi sửa presets/persona-rules.txt
 ```
-Kịch bản demo: `DEMO.md`. Kế hoạch cũ (M0–M7) đã chuyển vào `E:\Deepseek_Harness\_archive\dsh-docshield-old\`.
+Kịch bản demo: `DEMO.md`.
 
 ## Hạn chế đã biết
 - **Chống ảo giác phụ thuộc một phần vào model.** Code chặn được trích dẫn sai hoặc bịa, nhưng không ép được model luôn chọn "không tìm thấy". Ngưỡng tương đồng không tách được câu bẫy khỏi câu thật (hiệu chỉnh: 0,34–0,61 so với 0,40–0,77), nên việc từ chối dựa vào persona.

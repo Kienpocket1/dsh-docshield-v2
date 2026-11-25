@@ -25,6 +25,7 @@ RUN rm -rf /opt/plugins/dsh-gate/var /opt/plugins/dsh-gate/var-test /opt/plugins
 COPY exec-router/ /opt/plugins/dsh-exec-router/
 RUN ln -s /opt/dsh/node_modules /opt/plugins/dsh-exec-router/node_modules
 
+COPY container/skills/ /opt/dsh-skills/
 COPY container/runtime.patch.yml /opt/runtime.patch.yml
 COPY container/dsh-main-start.mjs /opt/dsh-main-start.mjs
 RUN mkdir -p /home/dsh /data /var/docshield /var/gate && chown node:node /home/dsh /data /var/docshield /var/gate

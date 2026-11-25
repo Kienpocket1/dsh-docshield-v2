@@ -41,6 +41,8 @@ export const DEFAULT_TOP_K = 5
 /** Preset row configuration (`agent.cordis.yml` → `docshield-tools.config`). */
 export interface ToolsConfig {
   readonly role: 'user' | 'admin'
+  /** Role tools this preset leaves out (e.g. the ticket agent: no update_ticket / publish_public_doc). */
+  readonly exclude?: readonly string[]
 }
 
 /**
@@ -106,7 +108,11 @@ export function resolveToolsConfig(raw: unknown): ToolsConfig {
   if (role !== 'user' && role !== 'admin') {
     throw new Error(`docshield-tools: config.role must be "user" or "admin" (got ${JSON.stringify(role)})`)
   }
-  return { role }
+  const exclude = isRecord(raw) ? raw.exclude : undefined
+  if (exclude !== undefined && !(Array.isArray(exclude) && exclude.every(x => typeof x === 'string'))) {
+    throw new Error('docshield-tools: config.exclude must be a list of tool names')
+  }
+  return exclude === undefined ? { role } : { role, exclude }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

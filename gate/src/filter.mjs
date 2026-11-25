@@ -28,7 +28,7 @@ const SESSION_QUERY_ROUTES = new Set(['/api/session/uploadFileBinary', '/api/cha
  * @param {string} deps.storageRoot
  * @param {(msg: string) => void} [deps.log]
  */
-export function createFilter({ upstream, sessions, call, storageRoot, log = () => {} }) {
+export function createFilter({ upstream, sessions, call, storageRoot, presetsOf = () => undefined, log = () => {} }) {
   /** workspaceId → path, learned from relayed workspace views. */
   const workspaces = new Map()
   /** user → "clientId|eventId" of Host waterfalls delivered to them. */
@@ -65,6 +65,7 @@ export function createFilter({ upstream, sessions, call, storageRoot, log = () =
       workspacePath: id => (typeof id === 'string' ? workspaces.get(id) : undefined),
       ownsWorkspace: id => inRoot(workspaces.get(id)),
       learn: (id, cwd) => sessions.learn(id, cwd),
+      presets: presetsOf(username),
       grants,
     }
   }

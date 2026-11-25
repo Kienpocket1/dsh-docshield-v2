@@ -4,7 +4,7 @@ import { readableScopes, resolveScope } from '../src/scope.js'
 const identity = (p: string) => p
 const win = { platform: 'win32' as const, realpath: identity }
 const posix = { platform: 'linux' as const, realpath: identity }
-const ROOT = 'E:\\Deepseek_Harness\\spike-dshpw\\storage'
+const ROOT = 'E:\\Company\\runtime\\storage'
 
 describe('resolveScope (win32)', () => {
   it('maps users/<u> and nested folders to that user', () => {
@@ -17,7 +17,7 @@ describe('resolveScope (win32)', () => {
   })
 
   it('matches the root case-insensitively and accepts forward slashes', () => {
-    expect(resolveScope('e:/deepseek_harness/SPIKE-DSHPW/storage/users/bob', ROOT, win).scope).toEqual({ role: 'user', userId: 'bob' })
+    expect(resolveScope('e:/company/RUNTIME/storage/users/bob', ROOT, win).scope).toEqual({ role: 'user', userId: 'bob' })
   })
 
   it('denies malformed places inside the root', () => {
@@ -40,7 +40,7 @@ describe('resolveScope (win32)', () => {
 
   it('denies a link from outside into a user folder (inside, no scope)', () => {
     const realpath = (p: string) => p.replace('\\link-to-bob', '\\storage\\users\\bob')
-    expect(resolveScope('E:\\Deepseek_Harness\\spike-dshpw\\link-to-bob', ROOT, { platform: 'win32', realpath }))
+    expect(resolveScope('E:\\Company\\runtime\\link-to-bob', ROOT, { platform: 'win32', realpath }))
       .toEqual({ inside: true, scope: null })
   })
 })

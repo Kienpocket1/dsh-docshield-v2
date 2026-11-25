@@ -60,6 +60,8 @@ export class GateStore {
     // v4: token plans with a 5-hour and a weekly window (v3's daily token_limit/token_usage are no longer read).
     // Only the gate process writes these. started_at is Unix ms: the window UPSERT does integer math on it.
     if (!columns.has('plan')) this.db.exec('ALTER TABLE users ADD COLUMN plan TEXT')
+    // v5: agent presets a user may pick, comma list; NULL = follow the default (setting default_presets).
+    if (!columns.has('presets')) this.db.exec('ALTER TABLE users ADD COLUMN presets TEXT')
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, name TEXT NOT NULL, session_limit INTEGER, weekly_limit INTEGER);
       INSERT OR IGNORE INTO plans VALUES ('free', 'Free', 100000, 500000), ('pro', 'Pro', 500000, 2500000), ('max', 'Max', 2500000, 12500000);
@@ -144,7 +146,7 @@ export class GateStore {
   }
 
   listUsers() {
-    return this.db.prepare(`SELECT id, username, role, status, disabled, must_change_password, plan, created_at, last_login_at
+    return this.db.prepare(`SELECT id, username, role, status, disabled, must_change_password, plan, presets, created_at, last_login_at
       FROM users ORDER BY status DESC, username`).all()
   }
 
@@ -173,6 +175,23 @@ export class GateStore {
   setPlan(username, plan) {
     if (plan !== null && this.getPlan(plan) === undefined) throw new Error(`Không có gói ${plan}`)
     const r = this.db.prepare('UPDATE users SET plan = ? WHERE username = ?').run(plan, username)
+    if (r.changes === 0) throw new Error(`Không có tài khoản ${username}`)
+  }
+
+  /**
+   * Presets the admin granted this name: its own list, else the `default_presets` setting,
+   * else undefined (caller falls back to its env default).
+   * @returns {string[] | undefined}
+   */
+  presetsOf(username) {
+    const own = this.getUser(username)?.presets
+    const value = own ?? this.getSetting('default_presets', undefined)
+    return value === undefined ? undefined : value.split(',').filter(Boolean)
+  }
+
+  /** @param {string[] | null} presets null = follow the default */
+  setPresets(username, presets) {
+    const r = this.db.prepare('UPDATE users SET presets = ? WHERE username = ?').run(presets === null ? null : presets.join(','), username)
     if (r.changes === 0) throw new Error(`Không có tài khoản ${username}`)
   }
 

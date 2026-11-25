@@ -190,7 +190,8 @@ async function startProxy() {
   await docker(['run', '-d', '--name', PROXY, '--label', `${P}.role=proxy`, '--network', NET_EGRESS,
     '--read-only', '--user', '1000:1000', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
     '--init', '--memory', '128m', '--memory-swap', '128m', '--cpus', '0.5', '--pids-limit', '64',
-    '-e', `EGRESS_SECRET=${egressSecret}`, '-e', 'EGRESS_LOG=/var/egress/egress.jsonl', '-v', `${VOL_EGRESS}:/var/egress`,
+    '-e', `EGRESS_SECRET=${egressSecret}`, '-e', 'EGRESS_LOG=/var/egress/egress.jsonl',
+    '-e', `EGRESS_LOCAL_ALLOW=${process.env.EGRESS_LOCAL_ALLOW ?? ''}`, '-v', `${VOL_EGRESS}:/var/egress`,
     IMAGE_PROXY])
   await docker(['network', 'connect', '--alias', 'egress-proxy', NET_TOOLS, PROXY])
   return spawn(DOCKER, ['logs', '-f', PROXY], { stdio: 'inherit', windowsHide: true })

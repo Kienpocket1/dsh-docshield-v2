@@ -90,6 +90,24 @@ describe('checkCall', () => {
     const linked = { ...access(), realInRoot: p => !p.includes('to-bob') }
     assert.equal(checkCall('session/create', { request: { cwd: path.join(ALICE, 'to-bob') } }, linked).allow, false, 'a link out of the folder')
   })
+  it('lets a user pick only presets the admin granted', () => {
+    const granted = { ...access(), presets: ['p3-h1'] }
+    const create = (a, preset) => checkCall('session/create', { request: { workspaceId: 'w-alice', agentPreset: preset } }, a).args.request.agentPreset
+    assert.equal(create(granted, 'p3-h1'), 'p3-h1')
+    assert.equal(create(granted, 'standard'), USER_PRESET)
+    assert.equal(create({ ...access(), presets: [] }, 'p3-h1'), USER_PRESET)
+    const select = (a, id, preset) => checkCall('agentPresets/select', { agentId: id, agentPreset: preset }, a).allow
+    assert.equal(select(granted, 's-alice', 'p3-h1'), true)
+    assert.equal(select(granted, 's-alice', USER_PRESET), true)
+    assert.equal(select(granted, 's-alice', 'standard'), false)
+    assert.equal(select(granted, 's-bob', 'p3-h1'), false, 'another user’s session')
+    const list = filterResult('agentPresets/list', { presets: [{ id: USER_PRESET, isDefault: false }, { id: 'p3-h1', isDefault: true }, { id: 'standard' }], authorable: true, modeSelectionEnabled: false }, granted)
+    assert.deepEqual(list.presets.map(p => [p.id, p.isDefault]), [[USER_PRESET, true], ['p3-h1', false]])
+    assert.equal(list.modeSelectionEnabled, true)
+    assert.equal(list.authorable, false)
+    const only = filterResult('agentPresets/list', { presets: [{ id: USER_PRESET }, { id: 'standard' }] }, { ...access(), presets: [] })
+    assert.equal(only.modeSelectionEnabled, false, 'no picker without a choice')
+  })
   it('keeps the directory picker inside the user folder', () => {
     const d = checkCall('directoryPicker/list', { request: {} }, access())
     assert.equal(d.args.request.path, ALICE)

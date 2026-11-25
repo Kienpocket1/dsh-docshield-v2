@@ -53,6 +53,13 @@ const SKIP_KEYS = new Set(['content', 'data', 'text', 'submittedAttachments'])
  * `docshield-harness` (shell, files… inside the user's tool container).
  */
 export const USER_PRESET = process.env.GATE_USER_PRESET === 'docshield-harness' ? 'docshield-harness' : 'docshield'
+// Extra presets a user may pick when the admin assigned none (env GATE_USER_EXTRA_PRESETS, comma list).
+export const USER_EXTRA_PRESETS = new Set((process.env.GATE_USER_EXTRA_PRESETS ?? '').split(',').filter(Boolean))
+
+/** Presets this user may run: always USER_PRESET, plus the admin's list (access.presets) or the env default. */
+export function allowedPresets(access) {
+  return new Set([USER_PRESET, ...(access.presets ?? USER_EXTRA_PRESETS)])
+}
 
 /** Case-insensitive on Windows; `child` equal to `root` counts as inside. */
 export function isInside(root, child) {
@@ -99,6 +106,11 @@ export function checkCall(method, args, access) {
   if (method === 'dynamicCordisRunner/syncInspectManifest') return { fake: undefined }
   if (method === 'session/list' || method === 'session/search') return { allow: true } // responses are filtered
   if (method === 'session/create') return checkCreate(args, access)
+  // The picker switches a blank session's preset: own session, allowed preset only.
+  if (method === 'agentPresets/select') {
+    if (!access.owns(args?.agentId)) return { allow: false, reason: 'phiên không thuộc về bạn' }
+    return allowedPresets(access).has(args?.agentPreset) ? { allow: true } : { allow: false, reason: 'preset chưa được cấp cho bạn' }
+  }
   if (method === 'directoryPicker/list') {
     const request = args?.request ?? args
     const wanted = request?.path
@@ -129,7 +141,7 @@ export function checkCall(method, args, access) {
   return { allow: false, reason: `chức năng ${method} không dành cho tài khoản thường` }
 }
 
-/** New sessions only inside the user's folder, always with the DocShield preset; no adopting old ids. */
+/** New sessions only inside the user's folder, with an allowed preset (else the DocShield one); no adopting old ids. */
 function checkCreate(args, access) {
   const request = args?.request
   if (!request || typeof request !== 'object') return { allow: false, reason: 'yêu cầu không hợp lệ' }
@@ -141,7 +153,8 @@ function checkCreate(args, access) {
   if (request.sessionId !== undefined && !access.owns(request.sessionId) && access.known?.(request.sessionId)) {
     return { allow: false, reason: 'mã phiên không hợp lệ' }
   }
-  return { allow: true, args: { ...args, request: { ...request, agentPreset: USER_PRESET } } }
+  const preset = allowedPresets(access).has(request.agentPreset) ? request.agentPreset : USER_PRESET
+  return { allow: true, args: { ...args, request: { ...request, agentPreset: preset } } }
 }
 
 function rewritePath(args, root) {
@@ -152,6 +165,12 @@ function rewritePath(args, root) {
 /** Trim a unary result to what the user owns. */
 export function filterResult(method, value, access) {
   if (value === null || typeof value !== 'object') return value
+  // The picker shows only allowed presets, defaults to USER_PRESET, and hides when there is no choice.
+  if (method === 'agentPresets/list') {
+    const allowed = allowedPresets(access)
+    const presets = (value.presets ?? []).filter(p => allowed.has(p.id)).map(p => ({ ...p, isDefault: p.id === USER_PRESET }))
+    return { ...value, presets, authorable: false, modeSelectionEnabled: presets.length > 1 }
+  }
   if (method === 'session/list') {
     return { ...value, items: (value.items ?? []).filter(s => access.inRoot(s.cwd) || access.owns(s.sessionId)) }
   }
